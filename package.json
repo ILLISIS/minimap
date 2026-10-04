@@ -1,0 +1,34 @@
+{
+	"name": "minimap",
+	"version": "2.0.0",
+	"description": "Minimap v2: one map of the cluster from the game's own chart, live and through time",
+	"private": true,
+	"type": "module",
+	"main": "dist/node/index.js",
+	"engines": { "node": ">=22" },
+	"peerDependencies": {
+		"@clusterio/controller": "workspace:^",
+		"@clusterio/host": "workspace:^",
+		"@clusterio/lib": "workspace:^"
+	},
+	"dependencies": {
+		"@sinclair/typebox": "catalog:",
+		"jsonwebtoken": "catalog:"
+	},
+	"devDependencies": {
+		"@clusterio/controller": "workspace:^",
+		"@clusterio/host": "workspace:^",
+		"@clusterio/lib": "workspace:^",
+		"@clusterio/web_ui": "workspace:^",
+		"@types/jsonwebtoken": "catalog:",
+		"@types/node": "catalog:",
+		"@types/react": "catalog:",
+		"antd": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:",
+		"typescript": "catalog:",
+		"webpack": "catalog:",
+		"webpack-cli": "catalog:",
+		"webpack-merge": "catalog:"
+	}
+}
