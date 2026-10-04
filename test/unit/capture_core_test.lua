@@ -183,6 +183,8 @@ t.test("adoption over an existing entry returns the displaced journey, whose for
 	t.expect_eq(st.reg[st.movers.y.reg], "y", "the same handle, the same number: y keeps it")
 	t.expect_true(st.movers.y.pt == nil and st.movers.y.t == nil, "y is sampled afresh")
 	t.expect_eq(core.adopt(st, "y", "t", 40, ref, 3, register), nil, "re-adopting y displaces nothing")
+	core.adopt(st, "y", "t", 41, ref, 3, register)
+	t.expect_eq(st.by_train[40], nil, "adopting y onto a new key leaves no entry at the old one")
 	core.adopt(st, "v1", "v", 750, { unit_number = 750 }, nil, register)
 	t.expect_eq(st.by_unit[750], "v1", "a vehicle goes by unit number")
 	core.forget(st, "v1")

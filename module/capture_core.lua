@@ -119,6 +119,9 @@ function core.take(st, j, kind, key, ref, n, register)
 	if m.reg and st.reg[m.reg] == j then
 		st.reg[m.reg] = nil
 	end
+	if m.key and m.key ~= key and index(st, m.kind)[m.key] == j then
+		index(st, m.kind)[m.key] = nil
+	end
 	m.ref, m.key, m.n = ref, key, n
 	m.reg = register(ref)
 	st.reg[m.reg] = j

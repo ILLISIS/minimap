@@ -4,6 +4,7 @@ local clusterio_api = require("modules/clusterio/api")
 local core = require("modules/minimap/capture_core")
 local tick = require("modules/minimap/tick")
 local terrain = require("modules/minimap/terrain")
+local movers = require("modules/minimap/movers")
 
 local control = { events = {} }
 
@@ -11,6 +12,11 @@ local control = { events = {} }
 -- A missing module fails the require, and pcall keeps that from failing the load.
 local ok, ue = pcall(require, "modules/universal_edges")
 control.ue = ok and type(ue) == "table" and ue.api_version == 1 and ue or nil
+-- §13, K28: with UE, a crossing train or vehicle carries its journey; no UE change is needed (spike 11 P8).
+if control.ue then
+	control.ue.transfers.extend{ name = "minimap", types = { train = true, vehicle = true }, capture = movers.capture,
+		materialized = movers.materialized }
+end
 
 --- storage.minimap, created or brought to this code's schema (§6.8); a new one reads which forces have players.
 local function ensure()
@@ -37,6 +43,9 @@ function control.config(json)
 		"minimap config: bad tile: " .. tostring(json))
 	local st = ensure()
 	st.tile, st.bounds, st.configured = tile, core.bounds(tile), true
+	if not st.seeded then
+		movers.seed(st, game.tick) -- plan ruling 5: by the first config the instance id is set (K7)
+	end
 	-- §14: the integrations found, at each config (plan ruling 15)
 	if control.ue then
 		tick.send{ type = "trace", op = "minimap.integration", phase = "universal_edges", level = "info" }
@@ -54,6 +63,7 @@ function control.resync(trace)
 	local st = ensure()
 	st.resync = { trace = trace, chunks = 0, movers = 0, tags = 0, machines = 0 }
 	terrain.surfaces(st)
+	movers.resync(st, game.tick)
 	terrain.resync(st)
 end
 
@@ -74,6 +84,7 @@ control.events[defines.events.on_tick] = function(e)
 		return
 	end
 	terrain.take(st)
+	movers.step(st, e.tick)
 	finish(st)
 	tick.flush(e.tick)
 end
@@ -88,6 +99,25 @@ control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
 for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed" }) do
 	control.events[defines.events[name]] = terrain.refresh_forces
+end
+
+-- §6.3, §13, K29: journeys follow joins and splits; a registered train or vehicle ends with gone, as does a player who
+-- leaves. These follow the save's state, so they run before the config too (plan ruling 10).
+control.events[defines.events.on_train_created] = movers.on_train_created
+control.events[defines.events.on_object_destroyed] = function(e)
+	local st = storage.minimap
+	local v = st and st.reg[e.registration_number]
+	if v == nil then
+		return
+	end
+	st.reg[e.registration_number] = nil
+	movers.gone(st, v)
+end
+control.events[defines.events.on_player_left_game] = function(e)
+	local st, p = storage.minimap, game.get_player(e.player_index)
+	if st and p then
+		movers.gone(st, "p:" .. p.name)
+	end
 end
 
 return control
