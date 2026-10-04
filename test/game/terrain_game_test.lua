@@ -28,6 +28,7 @@ t.case("terrain: nothing is captured before this boot's config (§6.1)", functio
 	end)
 	ctx.at(14, function()
 		mt.chart("mm-a", 1, 1, mt.solid(1))
+		mm_rt.seam.force("player") -- so only the missing config can stop the handler
 		local before = queued()
 		mm_rt.seam.charted("mm-a", "player", 1, 1)
 		ctx.expect(queued() == before, "the handler took nothing before the config")
@@ -157,9 +158,27 @@ t.case("terrain: no line reaches 3,500 bytes, an incompressible chart included, 
 	ctx.at(120, function()
 		at = game.tick
 		mt.chart("mm-b", 30, 30, mt.noise(7))
+		mt.chart("mm-b", 31, 30, mt.noise(8))
 		mm_rt.seam.charted("mm-b", "player", 30, 30)
+		mm_rt.seam.charted("mm-b", "player", 31, 30)
 	end)
 	ctx.at(124, function()
+		local lines, intact = {}, 0
+		for _, b in ipairs(mt.batches) do
+			if b.data.tick >= at then
+				for _, m in ipairs(b.data.msgs) do
+					if m.type == "mm.chunk" and m.s == "mm-b" and m.y == 30 and m.x >= 30 then
+						lines[#lines + 1] = b
+						intact = intact + (helpers.decode_string(m.d) == mt.noise(m.x - 23) and 1 or 0)
+					end
+				end
+			end
+		end
+		ctx.expect(#lines == 2 and lines[1] ~= lines[2], "two noise charts of one tick are two lines, got " .. #lines)
+		ctx.expect(intact == 2, "both charts intact")
+		for _, b in ipairs(lines) do
+			ctx.expect(b.bytes < 3500 and b.data.tick ~= nil, "a line under 3,500 bytes with its tick: " .. b.bytes)
+		end
 		local got = chunks(at, game.tick, "mm-b", 30, 30)
 		ctx.expect(#got == 1 and helpers.decode_string(got[1].d) == mt.noise(7), "the noise chart, intact")
 		ctx.expect(got[1] ~= nil and #got[1].d > 2000, "it deflated badly: " .. (got[1] and #got[1].d or 0) .. " bytes")
@@ -208,6 +227,8 @@ t.case("resync: the surfaces, then only charted chunks, sent though unchanged, t
 			ctx.expect(#done == 1, "one mm.resynced, got " .. #done)
 			if done[1] and r0[1] and r1[1] then
 				ctx.expect(done[1].tick >= r0[1].tick and done[1].tick >= r1[1].tick, "after the last chunk")
+				local first = mt.msgs("mm.surfaces", at, now)[1]
+				ctx.expect(first ~= nil and first.tick <= math.min(r0[1].tick, r1[1].tick), "mm.surfaces comes first")
 				ctx.expect(done[1].counts.chunks >= 2 and done[1].counts.drops == 0, "counts")
 			end
 		end)
@@ -224,6 +245,8 @@ t.case("resync: a second resync before the first ends completes once, under its 
 		ctx.at(470, function()
 			local done = mt.msgs("mm.resynced", at, game.tick)
 			ctx.expect(#done == 1 and done[1].trace == "mm.r3", "only mm.r3 completes")
+			local all = chunks(at, game.tick, "mm-r")
+			ctx.expect(done[1] ~= nil and #all > 0 and all[#all].tick <= done[1].tick, "after its own last chunk")
 		end)
 	end)
 
