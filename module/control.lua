@@ -1,9 +1,93 @@
--- Minimap v2 module entry (spec §6). It depends only on Clusterio (M10); UE is optional (§12.1).
+-- Minimap v2 module entry (spec §6): the handlers, the per-tick steps (§6.10), and the config and resync behind mm_rt
+-- (§6.1, §6.7). It depends only on Clusterio (M10); UE is optional (§12.1).
+local clusterio_api = require("modules/clusterio/api")
+local core = require("modules/minimap/capture_core")
+local tick = require("modules/minimap/tick")
+local terrain = require("modules/minimap/terrain")
+
 local control = { events = {} }
 
 -- §12.1: UE's Lua API when its module is patched in (clusterio/packages/host/src/patch.ts:49-52), nil standalone.
 -- A missing module fails the require, and pcall keeps that from failing the load.
 local ok, ue = pcall(require, "modules/universal_edges")
 control.ue = ok and type(ue) == "table" and ue.api_version == 1 and ue or nil
+
+--- storage.minimap, created or brought to this code's schema (§6.8); a new one reads which forces have players.
+local function ensure()
+	local fresh = storage.minimap == nil
+	storage.minimap = core.migrate(storage.minimap or {})
+	if fresh then
+		terrain.refresh_forces()
+	end
+	return storage.minimap
+end
+
+local function int(v)
+	return type(v) == "number" and v == math.floor(v)
+end
+
+--- mm_rt.config(json) (§6.1, §7.2): { tile? }, tile being gridworld.tile's { world, x, y, size, surface, … }. Capture
+--- starts here, once per boot. Every field Lua reads is checked; a bad one raises, and RCON returns the error.
+function control.config(json)
+	local c = helpers.json_to_table(json)
+	assert(type(c) == "table", "minimap config: not a JSON object: " .. tostring(json))
+	local tile = c.tile
+	assert(tile == nil or (type(tile) == "table" and type(tile.world) == "string" and type(tile.surface) == "string"
+		and int(tile.x) and int(tile.y) and int(tile.size) and tile.size > 0 and tile.size % 64 == 0),
+		"minimap config: bad tile: " .. tostring(json))
+	local st = ensure()
+	st.tile, st.bounds, st.configured = tile, core.bounds(tile), true
+	-- §14: the integrations found, at each config (plan ruling 15)
+	if control.ue then
+		tick.send{ type = "trace", op = "minimap.integration", phase = "universal_edges", level = "info" }
+	end
+	if tile then
+		tick.send{ type = "trace", op = "minimap.integration", phase = "gridworld", level = "info", world = tile.world,
+			surface = tile.surface }
+	end
+end
+
+--- mm_rt.resync(trace) (§6.7, K5, K33): the surfaces, then every charted captured chunk, forced past the compare and
+--- the cap; mm.resynced follows the last of them. A newer resync replaces one still running (plan ruling 16).
+function control.resync(trace)
+	assert(type(trace) == "string", "minimap resync: the trace must be a string")
+	local st = ensure()
+	st.resync = { trace = trace, chunks = 0, movers = 0, tags = 0, machines = 0 }
+	terrain.surfaces(st)
+	terrain.resync(st)
+end
+
+--- §6.7 step 6: once the resync's sentinel is taken and no machine waits, mm.resynced with its counts.
+local function finish(st)
+	local r = st.resync
+	if r and r.done and core.size(st.machines) == 0 then
+		tick.send{ type = "mm.resynced", trace = r.trace, counts = { chunks = r.chunks, movers = r.movers,
+			tags = r.tags, machines = r.machines, drops = st.drops + tick.oversize() } }
+		st.resync = nil
+	end
+end
+
+--- §6.10: nothing before this boot's config; then the chart items, the resync's end, and the flush.
+control.events[defines.events.on_tick] = function(e)
+	local st = storage.minimap
+	if not (st and st.configured) then
+		return
+	end
+	terrain.take(st)
+	finish(st)
+	tick.flush(e.tick)
+end
+
+control.on_init = ensure
+control.on_configuration_changed = ensure
+-- §6.1: a start, crash or rollback. Nothing is captured until the instance plugin configures this boot.
+control.events[clusterio_api.events.on_server_startup] = function()
+	ensure().configured = false
+end
+control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
+control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
+for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed" }) do
+	control.events[defines.events[name]] = terrain.refresh_forces
+end
 
 return control
