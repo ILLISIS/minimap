@@ -103,6 +103,13 @@ t.case("movers: a 1-1 train is sampled at its leading end both ways, so at back_
 				ctx.expect(math.abs(x.x - lead.x) < 0.01 and math.abs(x.y - lead.y) < 0.01,
 					"sampled at the leading end at " .. x.tick)
 				local dir = p[1] < 0 and -1 or 1
+				local prev = pos[x.tick - 1]
+				if prev and (prev[1] > 0) == (p[1] > 0) and (x.vx > 0) == (p[1] > 0) then
+					-- geometric check: with vx and the speed agreeing (not at the reversal, whose vx lags a tick), the stock
+					-- sampled is the one further along vx
+					local far = (p[2].x - p[3].x) * (x.vx > 0 and 1 or -1) > 0 and p[2] or p[3]
+					ctx.expect(math.abs(x.x - far.x) < 0.01, "further along vx at " .. x.tick)
+				end
 				ways[dir] = ways[dir] + 1
 			end
 		end
@@ -175,7 +182,7 @@ t.case("movers: at most 8 polls a tick, and the vehicles are cars and spidertron
 t.case("movers: a player without a character is walked as p:<name> (C9)", function(ctx)
 	local real, fake, at = movers.players, nil, nil
 	ctx.at(252, function()
-		fake = { valid = true, name = "mm-ghost", force = game.forces.player, physical_surface_index = S.index,
+		fake = { valid = true, name = "mm-ghost", force = game.forces.player, physical_surface_index = S.index, connected = true,
 			physical_position = { x = 0, y = 60 } }
 		movers.players = function()
 			return { fake }
@@ -192,13 +199,14 @@ t.case("movers: a player without a character is walked as p:<name> (C9)", functi
 				"the sample's fields")
 			ctx.expect(math.abs(got[1].vx - 12) < 0.5, "12 tiles a second, got " .. got[1].vx)
 		end
-		fake.valid = false
+		-- no longer connected: the scan's stop poll ends it (the resync's pass is pinned in the resync case)
+		fake.connected = false
 		movers.players = real
 		at = game.tick
 	end)
 	ctx.at(760, function()
 		local gone = mt.samples("p:mm-ghost", at, game.tick)
-		ctx.expect(#gone == 1 and gone[1].gone == true, "gone once it is no longer listed")
+		ctx.expect(#gone == 1 and gone[1].gone == true, "gone, and no sample, once it is no longer connected")
 		ctx.expect(storage.minimap.movers["p:mm-ghost"] == nil, "forgotten")
 	end)
 end)
@@ -271,6 +279,8 @@ t.case("resync: a sample for every known mover, parked ones included, all after 
 		-- a gone already waiting for mm-m, as an on_object_destroyed between two ticks leaves one: the resync's samples
 		-- must not join its mm.move, which precedes mm.surfaces
 		tick.move("mm-m", { j = "mm.order", gone = true })
+		-- a player who was connected when the save was taken: a mover, but no longer connected, and no on_player_left_game
+		storage.minimap.movers["p:mm-gh2"] = { kind = "p", s = "mm-m", ref = { valid = true, connected = false } }
 		mm_rt.resync("mm.m1")
 	end)
 	ctx.at(1850, function()
@@ -300,6 +310,16 @@ t.case("resync: a sample for every known mover, parked ones included, all after 
 			end
 		end
 		ctx.expect(surfaces and early == 0, "no re-sent sample precedes mm.surfaces, got " .. early)
+		local g2 = 0
+		for _, mv in ipairs(mt.msgs("mm.move", at, at + 1, function(m) return m.s == "mm-m" end)) do
+			for _, x in ipairs(mv.m) do
+				if x.j == "p:mm-gh2" then
+					g2 = g2 + (x.gone and 1 or 100)
+				end
+			end
+		end
+		ctx.expect(g2 == 1, "the disconnected player ends with one gone and no sample, got " .. g2)
+		ctx.expect(storage.minimap.movers["p:mm-gh2"] == nil, "forgotten")
 		local done = mt.msgs("mm.resynced", at, game.tick, function(m) return m.trace == "mm.m1" end)
 		ctx.expect(#done == 1 and done[1].counts.movers >= 4, "mm.resynced counts the movers")
 	end)

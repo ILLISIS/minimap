@@ -58,7 +58,8 @@ local function poll(st, j, t, how)
 		return false
 	end
 	local r = m.ref
-	if not (r and r.valid) then
+	-- a loaded save can hold a player who is no longer connected, and no on_player_left_game is raised for them
+	if not (r and r.valid) or (m.kind == "p" and not r.connected) then
 		movers.gone(st, j)
 		return false
 	end
