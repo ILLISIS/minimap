@@ -54,7 +54,9 @@ export default async function loadInstancePlugin(context: InstancePluginContext)
 		for (const msg of msgs) {
 			if (!valid(msg)) {
 				const type = String((msg as { type?: unknown } | null)?.type);
-				const fields = { op: "minimap.ipc", phase: "invalid", type, errors: valid.errors };
+				// ponytail: Ajv is verbose, its errors carry the data (§14); log a reduced form
+				const errors = (valid.errors ?? []).slice(0, 3).map(e => [e.instancePath, e.keyword, e.message]);
+				const fields = { op: "minimap.ipc", phase: "invalid", type, errors };
 				warn(`invalid:${type}`, "minimap.ipc invalid", fields);
 				continue;
 			}

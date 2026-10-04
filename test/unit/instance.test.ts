@@ -102,13 +102,16 @@ test("§7.3, §14: an invalid message is dropped with a rate-limited minimap.ipc
 	() => withTimers(async () => {
 		const f = fakeContext();
 		await loadInstancePlugin(f.context);
-		const bad = { type: "mm.chunk", s: "nauvis", f: "player", x: 0.5, y: 0 };
-		await f.ipc({ tick: 1, msgs: [bad, { type: "mm.adopt", j: "a", trace: "b" }, bad] });
+		const bad = { type: "mm.chunk", s: "nauvis", f: "player", x: 0.5, y: 0, d: "SECRETBYTES" };
+		const badTag = { type: "mm.tag", s: "nauvis", f: "player", n: "x", text: "SECRETTEXT" };
+		await f.ipc({ tick: 1, msgs: [bad, { type: "mm.adopt", j: "a", trace: "b" }, bad, badTag] });
 		await f.ipc("not a batch");
 		mock.timers.tick(BATCH_MS);
 		assert.deepEqual(f.sent[0].items.map(i => i.type), ["mm.adopt"]);
 		const warns = f.lines.filter(l => l.message === "minimap.ipc invalid");
-		assert.deepEqual(warns.map(l => [l.meta.type, l.meta.count]), [["mm.chunk", 1], ["batch", 1]]);
+		assert.deepEqual(warns.map(l => [l.meta.type, l.meta.count]),
+			[["mm.chunk", 1], ["mm.tag", 1], ["batch", 1]]);
+		assert.ok(!/SECRET/.test(JSON.stringify(f.lines)), "no chart bytes or tag text in the logs");
 		assert.ok(warns.every(l => l.level === "warn" && l.meta.op === "minimap.ipc" && l.meta.phase === "invalid"));
 	}));
 
@@ -151,12 +154,14 @@ test("§7.2, M10: at start, config then resync in one /sc; no gridworld (No fiel
 			assert.equal(f.rcon.length, 1);
 			assert.match(f.rcon[0], /^\/sc mm_rt\.config\("\{\}"\) mm_rt\.resync\("[0-9a-f]{8}\.\d+"\)$/);
 		}
-		const tile = { world: "w1", x: 1, y: -2, size: 512, surface: "nauvis", seed: 5, trace: "t" };
+		const tile = { world: "w1", x: 1, y: -2, size: 512, surface: "a\"b\\c'd\ne", seed: 5, trace: "t" };
 		const f = fakeContext(() => tile);
 		await loadInstancePlugin(f.context);
 		await f.hooks.start();
 		const config = /^\/sc mm_rt\.config\("(.*)"\) mm_rt\.resync\("(.*)"\)$/.exec(f.rcon[0])!;
-		assert.deepEqual(JSON.parse(config[1].replace(/\\"/g, "\"")), { tile });
+		assert.ok(!/(^|[^\\])(\\\\)*"/.test(config[1]), "no unescaped quote inside the literal");
+		const unescaped = config[1].replace(/\\(.)/g, (_m, c) => (c === "n" ? "\n" : c));
+		assert.deepEqual(JSON.parse(unescaped), { tile });
 		const start = f.lines.filter(l => l.message === "minimap.resync start");
 		assert.deepEqual(start.map(l => [l.level, l.meta.reason, l.meta.trace]), [["verbose", "start", config[2]]]);
 	}));
