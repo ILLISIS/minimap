@@ -5,6 +5,7 @@ local core = require("modules/minimap/capture_core")
 local tick = require("modules/minimap/tick")
 local terrain = require("modules/minimap/terrain")
 local movers = require("modules/minimap/movers")
+local overlays = require("modules/minimap/overlays")
 
 local control = { events = {} }
 
@@ -64,6 +65,7 @@ function control.resync(trace)
 	st.resync = { trace = trace, chunks = 0, movers = 0, tags = 0, machines = 0 }
 	terrain.surfaces(st)
 	movers.resync(st, game.tick)
+	overlays.resync_tags(st)
 	terrain.resync(st)
 end
 
@@ -84,6 +86,7 @@ control.events[defines.events.on_tick] = function(e)
 		return
 	end
 	terrain.take(st)
+	overlays.step(st)
 	movers.step(st, e.tick)
 	finish(st)
 	tick.flush(e.tick)
@@ -111,13 +114,26 @@ control.events[defines.events.on_object_destroyed] = function(e)
 		return
 	end
 	st.reg[e.registration_number] = nil
-	movers.gone(st, v)
+	if type(v) == "string" then
+		movers.gone(st, v)
+	else
+		overlays.removed(v)
+	end
 end
 control.events[defines.events.on_player_left_game] = function(e)
 	local st, p = storage.minimap, game.get_player(e.player_index)
 	if st and p then
 		movers.gone(st, "p:" .. p.name)
 	end
+end
+
+-- §6.4: chart tags. §6.6: v1's recipe hooks (M7); circuit-set recipes and a furnace's own switch are missed (K17).
+for _, name in ipairs({ "on_chart_tag_added", "on_chart_tag_modified", "on_chart_tag_removed" }) do
+	control.events[defines.events[name]] = overlays.on_tag
+end
+for _, name in ipairs({ "on_built_entity", "on_robot_built_entity", "on_space_platform_built_entity",
+	"script_raised_built", "script_raised_revive", "on_entity_settings_pasted", "on_gui_closed" }) do
+	control.events[defines.events[name]] = overlays.on_entity
 end
 
 return control

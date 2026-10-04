@@ -2,6 +2,7 @@
 -- The forces with players (M7), mm.surfaces and the resync's walk of charted chunks (§6.7) live here too.
 local core = require("modules/minimap/capture_core")
 local tick = require("modules/minimap/tick")
+local overlays = require("modules/minimap/overlays")
 
 local terrain = {}
 
@@ -90,6 +91,9 @@ local function read(st, item)
 		return -- plan ruling 11: a deleted surface's chunks are skipped here
 	end
 	local chart = chart_of(force, surface, { x = item.x, y = item.y })
+	if item.forced then
+		overlays.machines_in(st, surface, force, { x = item.x, y = item.y }) -- §6.7 step 5
+	end
 	if chart == last[key] and not item.forced then
 		return
 	end
