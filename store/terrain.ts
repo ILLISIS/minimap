@@ -107,7 +107,15 @@ export class Terrain {
 		for (let z = 1; z < LEVELS; z++) {
 			for (const child of [...this.areas.values()].filter(s => s.area.z === z - 1 && s.blocks.size > 0)) {
 				const { ax, ay } = child.area;
-				const parent = await this.get({ ...child.area, z, ax: Math.floor(ax / 2), ay: Math.floor(ay / 2) });
+				const pa = { ...child.area, z, ax: Math.floor(ax / 2), ay: Math.floor(ay / 2) };
+				let parent: State;
+				try {
+					parent = await this.get(pa);
+				} catch (err: any) {
+					// A parent that won't load (a corrupt index) is reported and skipped; the other areas still close.
+					failed(areaKey(pa), err);
+					continue;
+				}
 				for (const pb of new Set([...child.blocks].map(b => parentBlock(ax, ay, b)))) {
 					const rec = diff(parent.px, pb, shrink(child.px, pb), Math.max(c, parent.floor));
 					if (rec) {
@@ -198,7 +206,7 @@ export class Terrain {
 		})));
 		const bytes = files.map(f => ({ t: f.t, bytes: gunzipSync(f.gz) }));
 		const px = replay(snapGz && gunzipSync(snapGz), bytes, Infinity);
-		const last = Math.max(snap ?? -1, ...index.changes.map(([, l]) => l));
+		const last = Math.max(snap ?? -1, index.changes.at(-1)?.[1] ?? -1);
 		return {
 			area, key, px, index, open: [], blocks: new Set(), floor: last + 1, dirty: false,
 			snapBytes: snapGz?.length ?? 0,

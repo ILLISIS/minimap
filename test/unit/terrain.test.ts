@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { deflateSync, gunzipSync } from "node:zlib";
 import { at, decodeChange } from "../../shared/codec.js";
 import {
@@ -117,12 +117,15 @@ test("snapshots (K11): after the first change file, after 64 files, and once the
 		await close(c);
 		assert.equal((await index(disk, A0)).snaps.length, i < 64 ? 1 : 2, `after ${i} one-pixel files`);
 	}
-	c += 60_000;
-	for (let cx = 0; cx < 8; cx++) {
-		await terrain.chunk(1, "i-1", "nauvis", "player", cx, 2, c - 1000, noise());
+	// Bytes rule: each file of three noise blocks is under the snapshot's size (four blocks), the two together over.
+	for (const [row, snaps] of [[2, 2], [3, 3]]) {
+		c += 60_000;
+		for (let cx = 0; cx < 3; cx++) {
+			await terrain.chunk(1, "i-1", "nauvis", "player", cx, row, c - 1000, noise());
+		}
+		await close(c);
+		assert.equal((await index(disk, A0)).snaps.length, snaps, `after the noise file in row ${row}`);
 	}
-	await close(c);
-	assert.equal((await index(disk, A0)).snaps.length, 3, "a file as big as the snapshot brings the next");
 });
 
 test("a replay at any t equals applying every record up to t, across files and snapshots (§16.2)", async () => {
@@ -173,7 +176,9 @@ test("a late stamp is filed after the area's last file, and the replay still mat
 test("coarse levels (K20): exactly the changed parents, each a 2 × 2 average, stamped at the close", async () => {
 	const { disk, terrain, close } = await setup();
 	await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 1000, flat(0x1234));
+	await terrain.chunk(1, "i-1", "nauvis", "player", -9, 0, 1000, flat(0x1234));
 	await close(60_000);
+	assert.ok(await disk.get(indexKey({ ...A0, z: 1, ax: -1 })), "chunk -9 is in area -1, whose parent is -1, not 0");
 	let block = chunkBlock(0, 0);
 	for (const [z, n] of [[1, 256], [2, 64], [3, 16], [4, 4]]) {
 		block = parentBlock(0, 0, block);
@@ -195,12 +200,13 @@ test("the LRU (K21) is trimmed at the close; an evicted area reloads its pixels 
 	assert.equal(terrain.areas.size, 4, "8 areas over 5 levels, trimmed to 4");
 	assert.equal(terrain.areas.has(areaKey(A0)), false, "the oldest went first");
 	assert.equal(await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 61_000, flat(1)), "same", "reloaded");
-	assert.equal(await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 62_000, flat(9)), "changed");
-	assert.equal(terrain.open(areaKey(A0))?.t, 62_000);
+	assert.equal(await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 59_000, flat(9)), "changed");
+	assert.equal(terrain.open(areaKey(A0))?.t, 60_001, "the reloaded floor: after the snapshot at 60,000");
 });
 
 test("a failed write keeps the area's records for the next close, under the same name (Review Focus 1)", async () => {
-	const { disk, terrain, close, failures } = await setup();
+	// lru 4: the trim at the close runs while A0 still holds its records (A0 and its four parents are five areas).
+	const { disk, terrain, close, failures } = await setup(4);
 	await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 1000, flat(5));
 	const put = disk.put.bind(disk);
 	disk.put = async (key, data) => {
@@ -217,4 +223,18 @@ test("a failed write keeps the area's records for the next close, under the same
 	await close(120_000);
 	assert.deepEqual((await index(disk, A0)).changes, [[1000, 70_000]], "both records, in the file named by the first");
 	assert.equal((await readAt(disk, A0, 120_000))[at(chunkBlock(1, 0), 0)], 6);
+});
+
+test("a parent that won't load is reported and skipped; the other areas still write at that close", async () => {
+	const { disk, terrain, close, failures } = await setup();
+	const bad: Area = { ...A0, z: 1 };
+	await mkdir(dirname(disk.path(indexKey(bad))), { recursive: true });
+	await writeFile(disk.path(indexKey(bad)), "not gzip");
+	await terrain.chunk(1, "i-1", "nauvis", "player", 0, 0, 1000, flat(5));
+	await terrain.chunk(1, "i-1", "nauvis", "player", -9, 0, 1000, flat(6));
+	await close(60_000);
+	assert.deepEqual(failures, [areaKey(bad)]);
+	assert.ok(await disk.get(changeKey(A0, 1000)), "A0 still wrote");
+	assert.ok(await disk.get(changeKey({ ...A0, ax: -1 }, 1000)), "so did its neighbour");
+	assert.ok(await disk.get(indexKey({ ...A0, z: 1, ax: -1 })), "and the neighbour's parent");
 });

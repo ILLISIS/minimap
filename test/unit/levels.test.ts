@@ -20,6 +20,8 @@ test("a child block shrinks into its quadrant of one parent block", () => {
 	assert.equal(parentBlock(0, 0, 0), 0);
 	assert.equal(parentBlock(0, 0, 1), 0, "blocks 0 and 1 share a parent block");
 	assert.equal(parentBlock(0, 0, 2), 1);
+	assert.equal(parentBlock(1, 0, 0), 8, "odd ax: the east half");
+	assert.equal(parentBlock(0, 1, 0), 128, "odd ay: the south half");
 	assert.equal(parentBlock(-1, -1, 255), 255, "area -1 is odd: its parent's south-east quadrant");
 	const child = new Uint16Array(SIZE * SIZE);
 	for (let p = 0; p < 1024; p++) {
