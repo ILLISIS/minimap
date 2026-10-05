@@ -71,12 +71,14 @@ export class Viewer {
 	readonly recipes = new Versions<Recipe>();
 	/** Bumped at each switch: results of older loads and live updates are dropped (C7). */
 	private gen = 0;
-	/** In-flight loads: area keys, movement keys, `day:<day>`, tags and recipes keys. */
+	/** In-flight loads: area keys, movement keys, day indexes, tags and recipes keys. */
 	private loads = new Set<string>();
 	/** Live chunks that arrived while their area was loading, painted when it lands. */
 	private held = new Map<string, Chunk[]>();
 	private days = new Map<string, DayIndex>();
 	private done = new Set<string>();
+	/** Keys whose load failed: not asked for again until the next refresh, switch or seek. */
+	private failed = new Set<string>();
 	private framed = false;
 	private closed = false;
 	private stopLive = () => {};
@@ -120,6 +122,7 @@ export class Viewer {
 				this.areas.peek(key)!.stale = true;
 			}
 			this.days.clear();
+			this.failed.clear();
 			for (const key of [...this.done].filter(k => k.endsWith("/recipes.json.gz"))) {
 				this.done.delete(key);
 			}
@@ -140,7 +143,7 @@ export class Viewer {
 		this.stopLive();
 		for (const c of [
 			this.areas, this.bytes, this.past, this.present, this.tags, this.recipes, this.loads, this.held, this.days,
-			this.done,
+			this.done, this.failed,
 		]) {
 			c.clear();
 		}
@@ -175,6 +178,7 @@ export class Viewer {
 	/** Show time t, or live (undefined). */
 	seek(t: number | undefined): void {
 		this.at = t;
+		this.failed.clear();
 		this.changed();
 		this.invalidate();
 	}
@@ -249,7 +253,8 @@ export class Viewer {
 			if (e?.index.recipes && z === 0) {
 				this.loadRecipes(a);
 			}
-			if (!this.loads.has(key) && (!e || e.live !== live || (live ? e.stale : e.t !== t))) {
+			const need = !e || e.live !== live || (live ? e.stale : e.t !== t);
+			if (need && !this.loads.has(key) && !this.failed.has(key)) {
 				this.load(key, a, e, t, live);
 			}
 		}
@@ -277,9 +282,10 @@ export class Viewer {
 			this.areas.set(key, next);
 			this.invalidate();
 		}, () => {
-			// ponytail: a failed fetch leaves the area as it was (black when new); the next frame needing it retries.
+			// ponytail: a failed load leaves the area as it was (black when new); the next refresh or seek retries.
 			if (gen === this.gen) {
 				done();
+				this.failed.add(key);
 			}
 		});
 	}
@@ -388,23 +394,29 @@ export class Viewer {
 
 	/**
 	 * Fetch a JSON key once per selection (`keep`), or once at a time; hand it to `use` unless the selection changed.
-	 * ponytail: a failed fetch is tried again by the next frame that needs it.
+	 * ponytail: a failed fetch is tried again after the next refresh, switch or seek.
 	 */
 	private once<T>(key: string, use: (value: T) => void, keep: boolean): void {
-		if (this.loads.has(key) || this.done.has(key)) {
+		if (this.loads.has(key) || this.done.has(key) || this.failed.has(key)) {
 			return;
 		}
 		const gen = this.gen;
 		this.loads.add(key);
 		this.json<T>(key).then(value => {
-			if (gen === this.gen && value !== undefined) {
-				use(value);
+			if (gen === this.gen && value === undefined) {
+				this.failed.add(key);
+			} else if (gen === this.gen) {
+				use(value as T);
 				if (keep) {
 					this.done.add(key);
 				}
 				this.invalidate();
 			}
-		}, () => {}).finally(() => {
+		}, () => {
+			if (gen === this.gen) {
+				this.failed.add(key);
+			}
+		}).finally(() => {
 			if (gen === this.gen) {
 				this.loads.delete(key);
 			}

@@ -78,11 +78,17 @@ test("a frame is drawn only on a change: the view, data, the time, or a mover on
 	assert.equal(queue.length, 1, "bob walks on screen: frames keep coming");
 	perf.now += 61_000;
 	run();
-	assert.equal(queue.length, 0, "60 s of data time after his last sample he holds, and frames stop (K31)");
+	const held = draws();
+	perf.now += 5000;
+	run();
+	assert.equal(draws(), held, "60 s of data time after his last sample he holds, and frames stop (K31)");
 	const far: LiveMover = ["p:amy", "p", "player", "amy", 0, 99_999, 0, 5, 0, T + 61_000];
 	lives[0].on({ t: T + 61_000, map: "i-1", surface: "nauvis", movers: [far] });
 	await settle();
-	assert.equal(queue.length, 0, "a mover off screen asks for no frame");
+	const idle = draws();
+	perf.now += 5000;
+	run();
+	assert.equal(draws(), idle, "a mover off screen asks for no frame");
 });
 
 test("only areas the catalog lists are fetched, at most 54 at any zoom on 1920 × 1080 (§11.2)", async () => {
@@ -256,4 +262,59 @@ test("choose keeps what the catalog has, and falls back to its first map, surfac
 		...first, surface: "vulcanus", force: "enemy", instance: "7",
 	});
 	assert.equal(choose({ ...cat, maps: {} }), undefined);
+});
+
+test("a load that lands, and a seek, each ask for a frame (§11.8)", async () => {
+	const { viewer, run, draws } = setup(history());
+	await viewer.refresh();
+	run();
+	const waitLoaded = async () => {
+		for (let i = 0; i < 500 && viewer.loading !== 0; i++) {
+			await new Promise(resolve => setTimeout(resolve, 2));
+		}
+	};
+	const first = draws();
+	await waitLoaded();
+	assert.equal(run(), 1, "the landed area asks for a frame");
+	assert.equal(draws(), first + 1);
+	viewer.seek(155);
+	assert.equal(run(), 1, "a seek asks for a frame");
+	assert.equal(draws(), first + 2);
+});
+
+test("a failed load is not asked for again every frame; a refresh, a switch or a seek lets it retry", async () => {
+	const files = history();
+	files.set(changeKey(A0, 150), new Uint8Array([1, 2, 3]));
+	const { viewer, run, perf, lives, requests } = setup(files);
+	await viewer.refresh();
+	const T = 2_000_000_000;
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 1, 0, T]] });
+	const frames = async (n: number) => {
+		for (let i = 0; i < n; i++) {
+			await new Promise(resolve => setTimeout(resolve, 1));
+			perf.now += 16;
+			run();
+		}
+	};
+	// The index is fetched on each attempt; the bad file itself comes from the bytes cache the second time.
+	const bad = () => requests.filter(k => k === indexKey(A0)).length;
+	await frames(300);
+	assert.equal(bad(), 1, "300 frames, one request");
+	await viewer.refresh();
+	await frames(50);
+	assert.equal(bad(), 2, "the refresh retried once");
+});
+
+test("a live update that arrives after a switch to another force of the same surface is dropped (C7)", async () => {
+	const cat = catalog([[], [], [], [], []]);
+	const surface = cat.maps["i-1"].surfaces.nauvis;
+	surface.forces.enemy = surface.forces.player;
+	const { viewer, settle, lives } = setup(new Map([[CATALOG, cat]]));
+	await viewer.refresh();
+	await settle();
+	viewer.select({ map: "i-1", surface: "nauvis", force: "enemy" });
+	const T = 2_000_000_000;
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 0, 0, T]] });
+	await settle();
+	assert.equal(viewer.present.size, 0);
 });

@@ -118,3 +118,18 @@ test("the live view keeps 16 events a mover and forgets a gone mover", () => {
 	tracks.live(T + 50, [], ["1.5.v7"]);
 	assert.equal(tracks.size, 0);
 });
+
+test("a parked mover holds until its next sample even when that is under 60 s away (Review Focus 3)", () => {
+	const tracks = new Tracks();
+	tracks.live(T, [car(0, 0, T)]);
+	tracks.live(T + 30_000, [car(500, 10, T + 30_000)]);
+	assert.deepEqual(where(tracks, T + 15_000), [["1.5.v7", 0, false]]);
+});
+
+test("a moving mover is never interpolated towards its gone row: it runs on by its velocity until then", () => {
+	const tracks = new Tracks();
+	tracks.live(T, [car(0, 10, T)]);
+	tracks.live(T + 2000, [], ["1.5.v7"]);
+	assert.deepEqual(where(tracks, T + 1000), [["1.5.v7", 10, true]]);
+	assert.deepEqual(tracks.at(T + 2000), []);
+});
