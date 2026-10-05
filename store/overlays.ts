@@ -22,9 +22,15 @@ export class Overlays {
 	constructor(private disk: Disk) {}
 
 	/** Every tags and recipes file on disk, with its open versions, so a restart can't duplicate (Review Focus 3). */
-	async load(keys: string[]): Promise<void> {
+	async load(keys: string[], unreadable: (key: string, err: Error) => void = () => {}): Promise<void> {
 		for (const key of keys.filter(k => /\/(tags|recipes)\.json\.gz$/.test(k))) {
-			const list = await this.disk.json<Version[]>(key) ?? [];
+			let list: Version[];
+			try {
+				list = await this.disk.json<Version[]>(key) ?? [];
+			} catch (err: any) {
+				unreadable(key, err);
+				continue;
+			}
 			this.files.set(key, list);
 			const [map, surface] = key.split("/");
 			const kind = key.endsWith("/tags.json.gz") ? "t" : "r";

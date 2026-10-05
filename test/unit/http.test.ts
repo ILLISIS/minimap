@@ -81,8 +81,9 @@ test("the data route joins the wildcard segments: a traversal key is 400, a miss
 		users,
 		config: { get: () => 60 },
 	};
-	addRoutes(controller as any, {} as Store);
-	const call = async (key: string[], tok?: string) => {
+	const stub = { open: () => undefined, path: (k: string) => `/nonexistent/${k}` };
+	addRoutes(controller as any, stub as unknown as Store);
+	const call = async (key: string[], tok?: string, route = "data", headers: Record<string, string> = {}) => {
 		const sent: any[] = [];
 		const res: any = {
 			sendStatus: (c: number) => sent.push(c),
@@ -91,7 +92,7 @@ test("the data route joins the wildcard segments: a traversal key is 400, a miss
 			send: () => sent.push("body"),
 		};
 		const get = (n: string) => (n === "x-access-token" ? tok : undefined);
-		await routes["/api/minimap/data/*key"]({ params: { key }, get }, res);
+		await routes[`/api/minimap/${route}/*key`]({ params: { key }, get, headers }, res);
 		return sent;
 	};
 	const ok = token("viewer", 200);
@@ -99,4 +100,9 @@ test("the data route joins the wildcard segments: a traversal key is 400, a miss
 	assert.deepEqual(await call([".."], ok), [400]);
 	assert.deepEqual(await call(["a", "..", "x.gz"], ok), [400]);
 	assert.deepEqual(await call(["a/../../etc/x.gz"]), [401]);
+	for (const route of ["data", "open"]) {
+		const headers = { "x-access-token": ok, authorization: `Bearer ${ok}`, accept: "*/*" };
+		await call(["a", "x.gz"], ok, route, headers);
+		assert.deepEqual(headers, { accept: "*/*" }, `${route}: core's logger must not see the token`);
+	}
 });

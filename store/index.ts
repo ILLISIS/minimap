@@ -68,6 +68,7 @@ export function nextClose(c: number, w: number): number {
 export class Store {
 	readonly disk: Disk;
 	private terrain: Terrain;
+	private warn: ReturnType<typeof rateLimited>;
 	private movers: Movers;
 	private overlays: Overlays;
 	private catalog = new Catalog();
@@ -88,7 +89,8 @@ export class Store {
 		private now: () => number = Date.now,
 	) {
 		this.disk = new Disk(root);
-		this.terrain = new Terrain(this.disk, rateLimited(logger));
+		this.warn = rateLimited(logger);
+		this.terrain = new Terrain(this.disk, this.warn);
 		this.movers = new Movers(this.disk);
 		this.overlays = new Overlays(this.disk);
 	}
@@ -102,12 +104,21 @@ export class Store {
 		for (const key of keys) {
 			this.catalog.add(key);
 		}
-		await this.overlays.load(keys);
+		// One unreadable file must not stop the controller: log its key (never its contents) and skip it.
+		const unreadable = (key: string, err: Error) => {
+			lifecycle(this.logger, "minimap.store", "read_failed", { key, error: err.message }, "error");
+		};
+		await this.overlays.load(keys, unreadable);
 		this.movers.load(keys);
 		for (const key of keys.filter(k => k.endsWith("/recipes.json.gz"))) {
-			const index = await this.disk.json<AreaIndex>(key.replace(/recipes\.json\.gz$/, "index.json.gz"));
-			if (!index?.recipes) {
-				this.recipeAreas.push(recipesArea(key));
+			const file = key.replace(/recipes\.json\.gz$/, "index.json.gz");
+			try {
+				const index = await this.disk.json<AreaIndex>(file);
+				if (!index?.recipes) {
+					this.recipeAreas.push(recipesArea(key));
+				}
+			} catch (err: any) {
+				unreadable(file, err);
 			}
 		}
 	}
@@ -132,7 +143,14 @@ export class Store {
 			const inst = this.cluster.instance(instance) ?? { id: instance, name: "", tile: null };
 			const { out, updates } = gather();
 			for (const item of items) {
-				await this.item(inst, item, out);
+				try {
+					await this.item(inst, item, out);
+				} catch (err: any) {
+					// One bad item (a corrupt area index, say) must not lose the rest of the batch.
+					this.warn(`item:${item.type}:${(item as { s?: string }).s ?? ""}`, "minimap.store item failed", {
+						instance, type: item.type, error: err.message,
+					});
+				}
 			}
 			return this.stamp(updates);
 		});

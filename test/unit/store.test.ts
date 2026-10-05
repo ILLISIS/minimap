@@ -1,7 +1,7 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { deflateSync } from "node:zlib";
 import type { Stamped } from "../../contracts.js";
 import type { Instance } from "../../integrations.js";
@@ -251,4 +251,28 @@ test("the shutdown close (§8.10) writes the open window, notifies and stops the
 	t.mock.timers.tick(300_000);
 	await store.ingest(3, []); // lets a surviving timer's close run
 	assert.equal(seen.length, 1, "the timer was cleared");
+});
+
+test("an unreadable tags, recipes or index file doesn't stop load(); a corrupt index loses only its item", async () => {
+	const { store, lines } = await setup([solo]);
+	const root = store.disk.root;
+	const bad = async (key: string) => {
+		await mkdir(dirname(join(root, key)), { recursive: true });
+		await writeFile(join(root, key), "not gzip");
+	};
+	await bad("i-3/nauvis/player/tags.json.gz");
+	await bad("i-3/nauvis/player/0/6_6/recipes.json.gz");
+	await bad("i-3/nauvis/player/0/6_6/index.json.gz");
+	await bad("i-3/nauvis/player/0/0_0/index.json.gz");
+	const cluster = {
+		instance: () => solo, instances: () => [solo], edges: async () => new Map(), assets: () => undefined,
+	};
+	const again = new Store(root, cluster, fakeLogger(lines), () => 300, () => T);
+	await again.load();
+	assert.ok(lines.some(l => l.level === "error" && l.meta.key === "i-3/nauvis/player/tags.json.gz"));
+	assert.ok(lines.every(l => !JSON.stringify(l).includes("not gzip")), "no file contents in the log");
+	await again.ingest(3, [chunk(T + 1000, 0, 1), sample(T + 1000, "3.1.1", 5)]);
+	const movers = again.subscribed("i-3|nauvis").movers?.map(m => m[0]);
+	assert.deepEqual(movers, ["3.1.1"], "the mover after the failed chunk");
+	assert.ok(lines.some(l => l.level === "warn" && l.message.includes("item failed")));
 });

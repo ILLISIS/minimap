@@ -47,6 +47,12 @@ function verify(token: string, secret: Buffer, users: Users) {
 	}
 }
 
+/** Core's request logger logs req.headers at level http (Controller.ts:880-903): the token must not be in them. */
+function scrub(req: { headers: Record<string, unknown> }): void {
+	delete req.headers["x-access-token"];
+	delete req.headers.authorization;
+}
+
 /** §9.1's routes (K14, K25): a file of the key tree, and an area's open window, both behind authorize(). */
 export function addRoutes(controller: Controller, store: Store): void {
 	const allowed = (get: (name: string) => string | undefined) => authorize(
@@ -54,6 +60,7 @@ export function addRoutes(controller: Controller, store: Store): void {
 	);
 	controller.app.get("/api/minimap/data/*key", async (req, res) => {
 		const status = allowed(header => req.get(header));
+		scrub(req);
 		const key = req.params.key.join("/");
 		// Only the key tree's files, all .gz: not Plan C's s3.json beside them.
 		if (status !== 200 || !validKey(key) || !key.endsWith(".gz")) {
@@ -72,6 +79,7 @@ export function addRoutes(controller: Controller, store: Store): void {
 	});
 	controller.app.get("/api/minimap/open/*key", (req, res) => {
 		const status = allowed(header => req.get(header));
+		scrub(req);
 		const key = req.params.key.join("/");
 		if (status !== 200 || !validKey(key)) {
 			res.sendStatus(status === 200 ? 400 : status);
