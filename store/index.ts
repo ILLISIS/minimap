@@ -2,7 +2,7 @@ import * as lib from "@clusterio/lib";
 import type { LiveMover, Recipe, Stamped, Tag } from "../contracts.js";
 import { mapInfo, mapOf, type Cluster, type Instance } from "../integrations.js";
 import { lifecycle, rateLimited } from "../runtime.js";
-import { CATALOG, unname, type Area, type AreaIndex } from "../shared/keys.js";
+import { CATALOG, indexKey, unname, type Area, type AreaIndex } from "../shared/keys.js";
 import { Catalog } from "./catalog.js";
 import { Disk, bytesWritten } from "./disk.js";
 import { Movers } from "./movers.js";
@@ -51,6 +51,9 @@ function recipesArea(key: string): Area {
 	const [ax, ay] = xy.split("_").map(Number);
 	return { map, surface: unname(surface), force: unname(force), z: 0, ax, ay };
 }
+
+/** §7.3: a stopped instance's players are gone; a host crash leaves its instances "unknown", which is the same. */
+export const endsPlayers = (status: string) => status === "stopped" || status === "unknown";
 
 /** §8.10: after a close at c, the next is at the next multiple of W. */
 export function nextClose(c: number, w: number): number {
@@ -161,11 +164,18 @@ export class Store {
 			this.hour = hour;
 			// Ruling 24: the last close's new recipes files are queued ahead of this close's indexes, so an index never
 			// names a recipes file the publisher hasn't put yet (§10.5's order puts recipes after indexes).
-			for (const area of this.recipeAreas) {
-				await this.terrain.markRecipes(area);
+			const pending = this.recipeAreas;
+			this.recipeAreas = [];
+			for (const area of pending) {
+				try {
+					await this.terrain.markRecipes(area);
+				} catch (err: any) {
+					failed(indexKey(area), err);
+					this.recipeAreas.push(area); // kept for the next close
+				}
 			}
 			const overlays = await this.overlays.close(failed);
-			this.recipeAreas = overlays.areas;
+			this.recipeAreas.push(...overlays.areas);
 			const terrain = await this.terrain.close(c, failed);
 			const movers = await this.movers.close(c, keyframe, failed);
 			const keys = [...terrain.data, ...terrain.indexes, ...movers.files, ...movers.days, ...overlays.keys];

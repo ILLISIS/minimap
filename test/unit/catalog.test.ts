@@ -11,7 +11,7 @@ test("the catalog (§8.8) lists what a viewer may fetch, with the game's names (
 		"gw-w1/nauvis/player/1/0_0/index.json.gz", "gw-w1/nauvis/player/1/0_0/1759500060000.c.gz",
 		"gw-w1/nauvis/player/2/0_0/index.json.gz", "gw-w1/nauvis/player/3/0_0/index.json.gz",
 		"gw-w1/nauvis/player/4/0_0/index.json.gz", "gw-w1/nauvis/player/tags.json.gz",
-		"gw-w1/nauvis/player/0/0_0/recipes.json.gz",
+		"gw-w1/nauvis/player/0/0_0/recipes.json.gz", "gw-w1/nauvis/player/0/5_5/recipes.json.gz",
 		"gw-w1/nauvis/m/2026-10-05.json.gz", "gw-w1/nauvis/m/1759499990000.m.gz", "gw-w1/nauvis/m/1759500060000.k.gz",
 		"i-7/Bob~27s~20base/m/0/-1_0/index.json.gz", "i-7/Bob~27s~20base/m/0/-1_0/1759600000000.c.gz",
 	];

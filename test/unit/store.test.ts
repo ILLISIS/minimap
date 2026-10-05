@@ -1,11 +1,14 @@
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import type { Stamped } from "../../contracts.js";
 import type { Instance } from "../../integrations.js";
-import { CATALOG, utcDay, type AreaIndex, type Catalog, type DayIndex, type Quad } from "../../shared/keys.js";
-import { Store, luaDrops, nextClose } from "../../store/index.js";
+import {
+	CATALOG, indexKey, utcDay, type AreaIndex, type Catalog, type DayIndex, type Quad,
+} from "../../shared/keys.js";
+import { Store, endsPlayers, luaDrops, nextClose } from "../../store/index.js";
 import { ownerDrops, samplesTaken } from "../../store/movers.js";
 import { fakeLogger, tempDir, type Line } from "./fakes.js";
 
@@ -113,6 +116,7 @@ test("a recipes file the last close before a stop wrote is flagged at the first 
 		await store.ingest(3, [
 			{ type: "mm.recipe", s: "nauvis", f: "player", u: 9, x: 3, y: 4, r: "iron-gear-wheel", q: "", t: T + 1000 },
 		]);
+		await store.ingest(3, [chunk(T + 1001, 40, 5)]);
 		await store.close();
 		const index = "i-3/nauvis/player/0/0_0/index.json.gz";
 		assert.equal((await store.disk.json<AreaIndex>(index))?.recipes, undefined);
@@ -121,7 +125,50 @@ test("a recipes file the last close before a stop wrote is flagged at the first 
 		await again.closeWindow();
 		assert.equal((await again.disk.json<AreaIndex>(index))!.recipes, true);
 		assert.deepEqual(again.liveChanged(), [], "no movement on disk: no live file to put");
+		const catalog = (await again.disk.json<Catalog>(CATALOG))!;
+		assert.deepEqual(catalog.maps["i-3"].surfaces.nauvis.forces.player.areas[0], ["0_0", "3_0"],
+			"the area the restarted store never touched is still listed");
 	});
+
+test("a corrupt index fails its recipes flag once, not every close; the area is kept for the next (review fix 4)",
+	async () => {
+		const { store, cluster, lines } = await setup([solo]);
+		await store.ingest(3, [
+			{ type: "mm.recipe", s: "nauvis", f: "player", u: 9, x: 3, y: 4, r: "iron-gear-wheel", q: "", t: T + 1000 },
+			chunk(T + 1000, 0, 1),
+		]);
+		await store.close();
+		const key = "i-3/nauvis/player/0/0_0/index.json.gz";
+		const again = new Store(store.disk.root, cluster, fakeLogger(lines), () => 300, () => T + 600_000);
+		await again.load();
+		await writeFile(store.path(key), "not gzip");
+		const keys = await again.closeWindow();
+		assert.ok(keys.includes(CATALOG), "the close still finished");
+		const errors = lines.filter(l => l.message === "minimap.store write_failed");
+		assert.deepEqual(errors.map(l => l.meta.key), [key]);
+		await again.closeWindow();
+		const failures = lines.filter(l => l.message === "minimap.store write_failed");
+		assert.equal(failures.length, 2, "kept: retried next close");
+	});
+
+test("mm.surfaces begins a resync: the mover and tag it didn't re-send are closed by mm.resynced", async () => {
+	const { store } = await setup([solo]);
+	const tag = (n: number, t: number): Stamped => (
+		{ type: "mm.tag", s: "nauvis", f: "player", n, x: 1, y: 2, icon: "", text: "a", t });
+	await store.ingest(3, [sample(T + 1, "3.1.1", 1), sample(T + 1, "3.2.2", 2), tag(1, T + 1), tag(2, T + 1)]);
+	await store.liveChanged();
+	const updates = await store.ingest(3, [
+		{ type: "mm.surfaces", list: [{ name: "nauvis", tile: false }], t: T + 2 },
+		sample(T + 3, "3.1.1", 1), tag(1, T + 3),
+		{ type: "mm.resynced", trace: "r.1", counts: {}, t: T + 4 },
+	]);
+	assert.deepEqual(updates.map(u => u.gone), [["3.2.2"]]);
+	assert.deepEqual(updates[0].tags?.map(v => [v[1], v[4]]), [[2, T + 4]], "tag 2 closed at the resync");
+});
+
+test("a stop and a host crash (status unknown) both end the instance's players (§7.3)", () => {
+	assert.deepEqual(["stopped", "unknown", "running", "starting"].map(endsPlayers), [true, true, false, false]);
+});
 
 test("a tile surface lands on its world's map, the rest on the instance's own (K9, K32), as the catalog says",
 	async () => {
@@ -187,7 +234,8 @@ test("ingest: one live update per map surface; mm.adopt logs the owner change; m
 		assert.deepEqual(stopped.map(u => u.gone), [["p:alice"]], "players only; 3.1.1 is instance 4's now");
 	});
 
-test("the shutdown close (§8.10) writes the open window, tells the listeners and stops the timer", async () => {
+test("the shutdown close (§8.10) writes the open window, notifies and stops the timer", async (t: TestContext) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
 	const { store, lines } = await setup([solo]);
 	const seen: string[][] = [];
 	store.onWindowClosed(keys => {
@@ -200,5 +248,7 @@ test("the shutdown close (§8.10) writes the open window, tells the listeners an
 	assert.ok(seen[0].includes(`i-3/nauvis/player/0/0_0/${T + 1}.c.gz`));
 	const closed = lines.filter(l => l.message === "minimap.window closed");
 	assert.deepEqual(closed.map(l => [l.level, l.meta.files, l.meta.samples]), [["verbose", seen[0].length, 0]]);
-	// If the timer survived close(), node would hold this file open until it fired, 300 s on.
+	t.mock.timers.tick(300_000);
+	await store.ingest(3, []); // lets a surviving timer's close run
+	assert.equal(seen.length, 1, "the timer was cleared");
 });

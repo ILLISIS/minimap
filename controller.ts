@@ -4,7 +4,7 @@ import type { ControllerPluginContext } from "@clusterio/controller";
 import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
 import { MinimapDataEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
-import { Store } from "./store/index.js";
+import { Store, endsPlayers } from "./store/index.js";
 
 export default async function loadControllerPlugin(context: ControllerPluginContext) {
 	const { controller, logger, plugin } = context;
@@ -54,7 +54,7 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 	});
 	// §7.3: a stopped instance's players are gone, as v1's were.
 	controller.hooks.instanceStatusChanged.attach(plugin.name, async instance => {
-		if (instance.status === "stopped") {
+		if (endsPlayers(instance.status)) {
 			await store.instanceStopped(instance.id);
 		}
 	});
