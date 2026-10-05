@@ -55,7 +55,7 @@ viewer.subscribe(() => {
 const slider = $<HTMLInputElement>("slider");
 slider.addEventListener("input", () => {
 	const t = Number(slider.value);
-	viewer.seek(t >= viewer.range()[1] ? undefined : t);
+	viewer.seek(t >= Number(slider.max) ? undefined : t);
 });
 $("play").addEventListener("click", () => viewer.play(viewer.speed > 0 ? 0 : Number($("speed").value)));
 $("speed").addEventListener("change", () => {

@@ -85,6 +85,8 @@ export class Viewer {
 	private closed = false;
 	/** The browser time of the last played frame. */
 	private played = 0;
+	/** The keyframe time history's movers were loaded from: a new one drops the old span's windows. */
+	private keyAt = -Infinity;
 	private stopLive = () => {};
 	/** Whether the live subscription or poll started with the surface's `live` flag set. */
 	private liveFlag?: boolean;
@@ -150,7 +152,7 @@ export class Viewer {
 	/** A switch clears every cache and drops whatever is still in flight (C7; v1 kept them). */
 	select(sel: Selection): void {
 		this.gen += 1;
-		this.stopLive();
+		this.keyAt = -Infinity;
 		for (const c of [
 			this.areas, this.bytes, this.past, this.present, this.tags, this.recipes, this.loads, this.held, this.days,
 			this.done, this.failed,
@@ -197,6 +199,9 @@ export class Viewer {
 	/** Show time t, or live (undefined). */
 	seek(t: number | undefined): void {
 		this.at = t;
+		if (t === undefined) {
+			this.speed = 0;
+		}
 		this.failed.clear();
 		this.changed();
 		this.invalidate();
@@ -463,6 +468,14 @@ export class Viewer {
 		}
 		const indexes = days.flatMap(day => this.days.get(day) ?? []);
 		const k = Math.max(...indexes.flatMap(i => i.keys.filter(key => key <= t)));
+		if (k !== this.keyAt) {
+			// Playback would keep every window ever loaded: memory is bounded to one keyframe's span, a jump reloads.
+			this.keyAt = k;
+			this.past.clear();
+			for (const key of [...this.done].filter(d => d.endsWith(".m.gz") || d.endsWith(".k.gz"))) {
+				this.done.delete(key);
+			}
+		}
 		const keys = indexes.flatMap(i => i.windows.filter(([first, last]) => last >= k && first <= t))
 			.map(([first]) => moveKey(sel.map, sel.surface, first));
 		if (k > -Infinity) {

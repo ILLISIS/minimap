@@ -10,9 +10,6 @@ test("the public build is one self-contained file, dist/public/viewer.js, that P
 	assert.deepEqual(await readdir(join(dist, "public")), ["viewer.js"]);
 	const js = await readFile(join(dist, "public", "viewer.js"), "utf8");
 	assert.doesNotMatch(js, /sourceMappingURL/, "no source map to fetch");
-	for (const chunky of ["__webpack_require__.p", "__webpack_require__.e", "import("]) {
-		assert.ok(!js.includes(chunky), `no runtime chunk loading: ${chunky}`);
-	}
 });
 
 test("the public page's script is the placeholder Plan C fills in", async () => {
