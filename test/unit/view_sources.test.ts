@@ -85,11 +85,17 @@ test("the bucket's live file is polled every live_ms while the catalog lists it 
 	t.mock.timers.tick(5000);
 	await until(2);
 	assert.equal(calls.length, 3);
+	assert.equal(calls[0].cache, "no-cache", "the live key is revalidated");
+	answers.set(key, [200, { t: 3000, movers: [bob] }]);
+	t.mock.timers.tick(5000);
+	await new Promise(resolve => setTimeout(resolve, 50));
+	assert.equal(calls.length, 4);
+	assert.equal(seen.length, 2, "an older file than the last accepted is skipped");
 	assert.deepEqual(seen, [
 		{ t: 2000, map: "i-1", surface: "nauvis", movers: [bob, amy], gone: [] },
 		{ t: 7000, map: "i-1", surface: "nauvis", movers: [amy], gone: ["p:bob"] },
 	], "the same file twice is one update");
 	stop();
 	t.mock.timers.tick(5000);
-	assert.equal(calls.length, 3, "stopped");
+	assert.equal(calls.length, 4, "stopped");
 });

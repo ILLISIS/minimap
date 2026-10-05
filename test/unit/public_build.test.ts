@@ -1,0 +1,18 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+
+// Compiled to dist/node/test/unit/; dist/ is three levels up. `./dev test unit` runs webpack before the tests.
+const dist = join(import.meta.dirname, "..", "..", "..");
+
+test("the public build is one self-contained file, dist/public/viewer.js, that Plan C uploads (§10.8)", async () => {
+	assert.deepEqual(await readdir(join(dist, "public")), ["viewer.js"]);
+	const js = await readFile(join(dist, "public", "viewer.js"), "utf8");
+	assert.doesNotMatch(js, /sourceMappingURL/, "no source map to fetch");
+});
+
+test("the public page's script is the placeholder Plan C fills in", async () => {
+	const html = await readFile(join(dist, "..", "web", "public", "index.html"), "utf8");
+	assert.match(html, /<script src="__VIEWER_JS__"><\/script>/);
+});

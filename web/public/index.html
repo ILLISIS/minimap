@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cluster map</title>
+<style>
+	html, body { margin: 0; height: 100%; background: #000; color: #ddd; font: 14px sans-serif; }
+	body { display: flex; flex-direction: column; }
+	.bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; }
+	#canvas { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+</style>
+</head>
+<body>
+<div class="bar">
+	<select id="map"></select>
+	<select id="surface"></select>
+	<select id="force"></select>
+	<select id="instance"></select>
+</div>
+<canvas id="canvas"></canvas>
+<!-- Plan C fills in the uploaded name, viewer-<sha8>.js (spec §10.8). -->
+<script src="__VIEWER_JS__"></script>
+</body>
+</html>

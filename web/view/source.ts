@@ -67,11 +67,12 @@ export function apiSource(
  * The public page's files (§10.3): keys relative to the page, in the bucket it is served from. Each answer's Date
  * header is the server's clock, which feeds the data clock (plan ruling 3). `live` polls live.json.gz every
  * `live_ms` while the catalog lists it (§11.1, REV M-7), and shapes each new one as a live update: every mover, and
- * the ids gone since the last.
+ * the ids gone since the last. A file no newer than the last accepted is skipped (a slow poll out of order), and
+ * the live key is revalidated, so an early tick doesn't get the browser's cached file.
  */
 export function bucketSource(onDate: (t: number) => void, get: typeof fetch = fetch): Source {
-	const fetchKey = async (key: string) => {
-		const res = await get(key);
+	const fetchKey = async (key: string, init?: RequestInit) => {
+		const res = await get(key, init);
 		const date = Date.parse(res.headers.get("Date") ?? "");
 		if (!Number.isNaN(date)) {
 			onDate(date);
@@ -79,19 +80,19 @@ export function bucketSource(onDate: (t: number) => void, get: typeof fetch = fe
 		return unzip(res);
 	};
 	return {
-		get: fetchKey,
+		get: key => fetchKey(key),
 		icon: key => key,
 		live(map, surface, catalog, on) {
 			if (!catalog.maps[map]?.surfaces[surface]?.live) {
 				return () => {};
 			}
 			let stopped = false;
-			let last: number | undefined;
+			let last = -Infinity;
 			let ids = new Set<string>();
 			const poll = async () => {
-				const bytes = await fetchKey(liveKey(map, surface));
+				const bytes = await fetchKey(liveKey(map, surface), { cache: "no-cache" });
 				const file = bytes && JSON.parse(new TextDecoder().decode(bytes)) as { t: number; movers: LiveMover[] };
-				if (stopped || !file || file.t === last) {
+				if (stopped || !file || file.t <= last) {
 					return;
 				}
 				last = file.t;
