@@ -229,6 +229,18 @@ export class Store {
 		await this.closeWindow();
 	}
 
+	/** The open window of the area at `key` (§9.1, K25), or undefined when nothing is open there. */
+	open(key: string): { t: number; bytes: Uint8Array } | undefined {
+		return this.terrain.open(key);
+	}
+
+	/** On subscribe (§9.2): every owned live mover of the filter's "<map>|<surface>", split at its first "|". */
+	subscribed(filter: string): LiveUpdate {
+		const [map, ...rest] = filter.split("|");
+		const surface = rest.join("|");
+		return { t: this.now(), map, surface, movers: this.movers.live(map, surface) };
+	}
+
 	private async item(inst: Instance, m: Stamped, out: Out): Promise<void> {
 		const id = inst.id;
 		switch (m.type) {

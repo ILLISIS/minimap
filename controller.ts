@@ -1,10 +1,16 @@
 import * as path from "node:path";
 import type * as lib from "@clusterio/lib";
 import type { ControllerPluginContext } from "@clusterio/controller";
+import { addRoutes } from "./http.js";
 import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
-import { MinimapDataEvent } from "./messages.js";
+import { MinimapDataEvent, MinimapLiveEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
-import { Store, endsPlayers } from "./store/index.js";
+import { Store, endsPlayers, type LiveUpdate } from "./store/index.js";
+
+/** A LiveUpdate as the event (plan ruling 18: the constructor takes the contract's fields in order). */
+function live(u: LiveUpdate): MinimapLiveEvent {
+	return new MinimapLiveEvent(u.t, u.map, u.surface, u.chunks, u.movers, u.gone, u.tags, u.recipes);
+}
 
 export default async function loadControllerPlugin(context: ControllerPluginContext) {
 	const { controller, logger, plugin } = context;
@@ -49,15 +55,27 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 	await store.load();
 	store.start();
 
+	// §9.2: one broadcast per arriving batch and map surface, to the subscribers of "<map>|<surface>".
+	const broadcast = (updates: LiveUpdate[]) => {
+		for (const u of updates) {
+			controller.subscriptions.broadcast(live(u), `${u.map}|${u.surface}`);
+		}
+	};
+	// Plan ruling 12: the replay answers the request's first filter; the viewer subscribes once per map surface.
+	controller.subscriptions.handle(MinimapLiveEvent, async (request: lib.SubscriptionRequest) => {
+		const [filter] = request.action === "unsubscribe" ? [] : [...request.filters];
+		return filter === undefined ? null : live(store.subscribed(filter));
+	});
 	controller.handle(MinimapDataEvent, async (event: MinimapDataEvent, src: lib.Address) => {
-		await store.ingest(src.id, event.items);
+		broadcast(await store.ingest(src.id, event.items));
 	});
 	// §7.3: a stopped instance's players are gone, as v1's were.
 	controller.hooks.instanceStatusChanged.attach(plugin.name, async instance => {
 		if (endsPlayers(instance.status)) {
-			await store.instanceStopped(instance.id);
+			broadcast(await store.instanceStopped(instance.id));
 		}
 	});
+	addRoutes(controller, store);
 	// §8.10's shutdown close: Clusterio awaits this hook (clusterio/packages/controller/src/Controller.ts:547).
 	// Plan C's publisher drains its lane after it, in this hook.
 	controller.hooks.shutdown.attach(plugin.name, async () => {
