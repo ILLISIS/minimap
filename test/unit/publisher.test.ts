@@ -1,14 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, writeFileSync } from "node:fs";
-import { readFile, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import * as lib from "@clusterio/lib";
 import type { LiveMover } from "../../contracts.js";
 import { Publisher, attachRestarts, puts, queued, type S3Config } from "../../s3/publisher.js";
 import { sha256 } from "../../s3/sigv4.js";
 import { CONFIG, FAST, fakeFetch, fakeLogger, fakeStore, quiet, until, type Line } from "./fakes.js";
+
+/** A hang-only mutant must fail its test, not stall the suite. */
+const BOUND = { timeout: 10_000 };
 
 function setup(
 	store: Awaited<ReturnType<typeof fakeStore>>,
@@ -21,7 +24,7 @@ function setup(
 }
 
 test("one PUT at a time, in order; a mutable key sent again moves to the end, unless it names no file or never " +
-	"changes", async () => {
+	"changes", BOUND, async () => {
 	const store = await fakeStore();
 	let release!: () => void;
 	const held = new Promise<number>(resolve => {
@@ -44,6 +47,7 @@ test("one PUT at a time, in order; a mutable key sent again moves to the end, un
 });
 
 test("§10.4's headers: path-style URL, every header signed, Cache-Control by kind, gzip with no Content-Encoding",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		const { fetch, calls } = fakeFetch();
@@ -73,7 +77,7 @@ test("§10.4's headers: path-style URL, every header signed, Cache-Control by ki
 		await p.shutdown();
 	});
 
-test("retries by status: back off on network errors, 5xx and 429; auth waits; another 4xx drops", async () => {
+test("retries by status: back off on network errors, 5xx and 429; auth waits; another 4xx drops", BOUND, async () => {
 	const store = await fakeStore();
 	const answers: Record<string, number[]> = {
 		"a.c.gz": [500, 429, 0, 200],
@@ -103,7 +107,7 @@ test("retries by status: back off on network errors, 5xx and 429; auth waits; an
 	assert.ok(!logged.includes(CONFIG.accessKeyId!) && !logged.includes(CONFIG.secretAccessKey!));
 });
 
-test("a missing file is skipped", async () => {
+test("a missing file is skipped", BOUND, async () => {
 	const store = await fakeStore();
 	const { fetch, calls } = fakeFetch();
 	const p = setup(store, fetch);
@@ -117,7 +121,8 @@ test("a missing file is skipped", async () => {
 	await p.shutdown();
 });
 
-test("the queue persists in s3.json: a restart with the same target resumes it, a new target backfills", async () => {
+test("the queue persists in s3.json: a restart with the same " +
+	"target resumes it, a new target backfills", BOUND, async () => {
 	const store = await fakeStore();
 	await store.close("i-1/n/p/0/0_0/1.c.gz", "i-1/n/p/0/0_0/index.json.gz", "maps.json.gz", "i-1/n/m/2.m.gz",
 		"i-1/n/m/2020-01-01.json.gz", "i-1/n/p/tags.json.gz", "i-1/n/p/0/0_0/recipes.json.gz");
@@ -160,6 +165,7 @@ test("the queue persists in s3.json: a restart with the same target resumes it, 
 });
 
 test("the live lane PUTs each changed map surface's live file every period; the latest wins, nothing is retried",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		let release!: () => void;
@@ -189,7 +195,7 @@ test("the live lane PUTs each changed map surface's live file every period; the 
 		await p.shutdown();
 	});
 
-test("off unless the endpoint, the bucket and both keys are set: no PUT, no timer, no s3.json", async () => {
+test("off unless the endpoint, the bucket and both keys are set: no PUT, no timer, no s3.json", BOUND, async () => {
 	for (const field of ["endpoint", "bucket", "accessKeyId", "secretAccessKey"] as const) {
 		const store = await fakeStore();
 		const { fetch, calls } = fakeFetch();
@@ -206,6 +212,7 @@ test("off unless the endpoint, the bucket and both keys are set: no PUT, no time
 });
 
 test("turning it off forgets the target, so turning it on again backfills; neither key is ever logged or saved",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		await store.close("a.c.gz");
@@ -232,7 +239,7 @@ test("turning it off forgets the target, so turning it on again backfills; neith
 		assert.ok(!text.includes(CONFIG.accessKeyId!) && !text.includes(CONFIG.secretAccessKey!));
 	});
 
-test("shutdown drains the file lane, then PUTs the final live file", async () => {
+test("shutdown drains the file lane, then PUTs the final live file", BOUND, async () => {
 	const store = await fakeStore();
 	const { fetch, calls } = fakeFetch(async () => {
 		await quiet(20);
@@ -248,6 +255,7 @@ test("shutdown drains the file lane, then PUTs the final live file", async () =>
 });
 
 test("shutdown waits for the lane no longer than its bound, then still tries the final live file, itself bounded",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		const hang = new Promise<number>(() => undefined);
@@ -266,7 +274,7 @@ test("shutdown waits for the lane no longer than its bound, then still tries the
 		assert.deepEqual(saved.data.queue, ["a.c.gz", "b.c.gz"], "kept for the next start");
 	});
 
-test("Review Focus 1: a secret fixed during 403 retries is used at once, with no backfill", async () => {
+test("Review Focus 1: a secret fixed during 403 retries is used at once, with no backfill", BOUND, async () => {
 	const store = await fakeStore();
 	const { fetch, calls } = fakeFetch(call => (call.headers.authorization.includes("KEYID1234") ? 403 : 200));
 	const lines: Line[] = [];
@@ -284,7 +292,7 @@ test("Review Focus 1: a secret fixed during 403 retries is used at once, with no
 	await p.shutdown();
 });
 
-test("Review Focus 2: a close during a start is kept, after the start's own queue", async () => {
+test("Review Focus 2: a close during a start is kept, after the start's own queue", BOUND, async () => {
 	const store = await fakeStore();
 	await store.close("a.c.gz");
 	let release!: () => void;
@@ -303,7 +311,8 @@ test("Review Focus 2: a close during a start is kept, after the start's own queu
 	await p.shutdown();
 });
 
-test("Review Focus 3: a mutable file rewritten during its own PUT goes up again, with its new bytes", async () => {
+test("Review Focus 3: a mutable file rewritten during its own " +
+	"PUT goes up again, with its new bytes", BOUND, async () => {
 	const store = await fakeStore();
 	let release!: () => void;
 	const held = new Promise<number>(resolve => {
@@ -323,6 +332,7 @@ test("Review Focus 3: a mutable file rewritten during its own PUT goes up again,
 });
 
 test("Review Focus 4: a start that throws (an endpoint without its scheme) is off, and the next good one backfills",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		const lines: Line[] = [];
@@ -350,6 +360,7 @@ test("Review Focus 4: a start that throws (an endpoint without its scheme) is of
 	});
 
 test("Review Focus 3: a mutable file rewritten by a close still handing over waits behind the files it names",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		let release!: () => void;
@@ -376,6 +387,7 @@ test("Review Focus 3: a mutable file rewritten by a close still handing over wai
 	});
 
 test("a new target's first live round puts every live file again, parked surfaces included (plan ruling 13)",
+	BOUND,
 	async () => {
 		const store = await fakeStore();
 		const { fetch, calls } = fakeFetch();
@@ -399,6 +411,7 @@ test("a new target's first live round puts every live file again, parked surface
 	});
 
 test("a minimap.s3_* change, the default mod pack's id and a mod pack change restart the publisher; W doesn't",
+	BOUND,
 	async () => {
 		const hooks = {
 			controllerConfigFieldChanged: new lib.AsyncHook<[string, unknown, unknown]>(fakeLogger()),
@@ -418,7 +431,7 @@ test("a minimap.s3_* change, the default mod pack's id and a mod pack change res
 	});
 
 test("a file the lane reaches before its close's hand-over waits at the head: no catalog or index naming a file " +
-	"not yet up goes first", async () => {
+	"not yet up goes first", BOUND, async () => {
 	const store = await fakeStore();
 	let release!: () => void;
 	const held = new Promise<number>(resolve => {
@@ -443,7 +456,7 @@ test("a file the lane reaches before its close's hand-over waits at the head: no
 	await p.shutdown();
 });
 
-test("a restart stops the old live timer and lane: one live PUT per change, one lane's retries", async () => {
+test("a restart stops the old live timer and lane: one live PUT per change, one lane's retries", BOUND, async () => {
 	const store = await fakeStore();
 	const { fetch, calls } = fakeFetch(call => (call.key.endsWith("live.json.gz") ? 200 : 403));
 	let config = CONFIG;
@@ -466,7 +479,7 @@ test("a restart stops the old live timer and lane: one live PUT per change, one 
 	await p.shutdown();
 });
 
-test("off, no live round runs and the queue gauge is 0", async () => {
+test("off, no live round runs and the queue gauge is 0", BOUND, async () => {
 	const store = await fakeStore();
 	let rounds = 0;
 	const counted = {
@@ -491,7 +504,7 @@ test("off, no live round runs and the queue gauge is 0", async () => {
 	await p.shutdown();
 });
 
-test("a start that throws zeroes the queue gauge", async () => {
+test("a start that throws zeroes the queue gauge", BOUND, async () => {
 	const store = await fakeStore();
 	let config = CONFIG;
 	const { fetch } = fakeFetch(() => 503);
@@ -505,7 +518,8 @@ test("a start that throws zeroes the queue gauge", async () => {
 	await p.shutdown();
 });
 
-test("a mutable file written in the same millisecond as its close's hand-over is PUT, not left waiting", async () => {
+test("a mutable file written in the same millisecond as its " +
+	"close's hand-over is PUT, not left waiting", BOUND, async () => {
 	const store = await fakeStore();
 	const { fetch, calls } = fakeFetch();
 	const p = setup(store, fetch);
@@ -525,7 +539,8 @@ test("a mutable file written in the same millisecond as its close's hand-over is
 	await p.shutdown();
 });
 
-test("a hand-over during the lane's read of a mutable file isn't a lost wake: the key goes up at once", async () => {
+test("a hand-over during the lane's read of a mutable file " +
+	"isn't a lost wake: the key goes up at once", BOUND, async () => {
 	const store = await fakeStore();
 	let armed = false;
 	const slow = {
@@ -554,3 +569,64 @@ test("a hand-over during the lane's read of a mutable file isn't a lost wake: th
 	assert.equal(calls[calls.length - 1].body.toString(), "newer");
 	await p.shutdown();
 });
+
+test("a live file whose PUT failed is put again by a later round, with no mover change", BOUND, async () => {
+	const store = await fakeStore();
+	const { fetch, calls } = fakeFetch((_, all) => (all.length === 1 ? 403 : 200));
+	const p = setup(store, fetch);
+	await p.restart();
+	store.moved({ map: "i-1", surface: "nauvis", t: 7, movers: [] });
+	await until(() => calls.length === 2);
+	await quiet(100);
+	assert.deepEqual(calls.map(c => c.key), Array(calls.length).fill("i-1/nauvis/live.json.gz"));
+	assert.equal(calls.length, 2, "the failed PUT once more, then nothing: it is up");
+	assert.equal((JSON.parse(gunzipSync(calls[1].body).toString()) as { t: number }).t, 7);
+	await p.shutdown();
+});
+
+test("a crash between a close's writes and its hand-over: a same-target start queues the orphaned keys, in " +
+	"backfill order, behind the saved queue", BOUND, async () => {
+	const store = await fakeStore();
+	await store.close("i-1/n/p/0/0_0/1.c.gz", "i-1/n/p/0/0_0/index.json.gz", "maps.json.gz");
+	const first = fakeFetch();
+	const p1 = setup(store, first.fetch);
+	await p1.restart();
+	await until(() => first.calls.length === 3);
+	await p1.shutdown();
+	const file = join(store.root, "s3.json");
+	const old = new Date(Date.now() - 60_000);
+	await utimes(file, old, old);
+	for (const key of ["maps.json.gz", "i-1/n/p/0/0_0/index.json.gz", "i-1/n/p/0/1_0/2.c.gz"]) {
+		await mkdir(dirname(store.path(key)), { recursive: true });
+		await writeFile(store.path(key), gzipSync(`${key}!`));
+	}
+	await utimes(store.path("i-1/n/p/0/0_0/1.c.gz"), old, old);
+	const second = fakeFetch();
+	const p2 = setup(store, second.fetch);
+	await p2.restart();
+	await until(() => second.calls.length === 3);
+	assert.deepEqual(second.calls.map(c => c.key),
+		["i-1/n/p/0/1_0/2.c.gz", "i-1/n/p/0/0_0/index.json.gz", "maps.json.gz"]);
+	await p2.shutdown();
+});
+
+test("a day index is rewritten by its last close: enqueue decides by extension, not by the clock less W",
+	BOUND,
+	async () => {
+		const store = await fakeStore();
+		let release!: () => void;
+		const held = new Promise<number>(resolve => {
+			release = () => resolve(200);
+		});
+		const { fetch, calls } = fakeFetch((_, all) => (all.length === 1 ? held : 200));
+		const p = setup(store, fetch);
+		await p.restart();
+		const day = "i-1/nauvis/m/2020-01-01.json.gz"; // past the clock less W, as a final day index is
+		await store.close(day);
+		await until(() => calls.length === 1);
+		await store.close(day); // its last close, while the first PUT is in flight
+		release();
+		await until(() => calls.length === 2);
+		assert.deepEqual(calls.map(c => c.key), [day, day], "put again, with the last close's bytes");
+		await p.shutdown();
+	});

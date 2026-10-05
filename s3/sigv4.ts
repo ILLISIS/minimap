@@ -54,6 +54,8 @@ export function signedPut(
 	headers: Record<string, string>,
 	now = new Date(),
 ): { url: string; init: RequestInit } {
+	// ponytail: origin only, the endpoint's own path is dropped: R2's dashboard S3 URL may end in /<bucket>; add a path
+	// when a gateway needs one.
 	const url = new URL(t.endpoint);
 	const path = `/${t.bucket}/${key}`;
 	const sent = { ...headers, "x-amz-content-sha256": sha256(body), "x-amz-date": amzDate(now) };

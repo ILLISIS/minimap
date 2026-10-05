@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { LEVELS, unname, type Catalog as CatalogJson, type MapInfo, type Quad } from "../shared/keys.js";
 
 type Force = { tags: boolean; areas: Set<string>[] };
@@ -61,7 +62,7 @@ export class Catalog {
 			maps[map] = { ...(info[map] ?? { title: map, instances: {} }), surfaces };
 		}
 		const icons = assets?.spritesheet && assets.metadata
-			? { png: `icons/${assets.spritesheet}`, json: `icons/${assets.metadata}` }
+			? { png: `icons/${basename(assets.spritesheet)}`, json: `icons/${basename(assets.metadata)}` }
 			: undefined;
 		return { updated, window_ms: windowMs, live_ms: 5000, ...(icons ? { icons } : {}), maps };
 	}

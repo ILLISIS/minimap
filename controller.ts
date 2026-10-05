@@ -59,18 +59,19 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 	// §10.8: the public page's files, at each publisher start. The icons are the default mod pack's export, which
 	// Clusterio keeps in static/ under its working directory (clusterio/packages/controller/src/routes.ts:298), under
 	// the names the catalog gives them (Plan B's controller ruling R2).
-	const pages = () => {
+	const pages = async () => {
 		const assets = cluster.assets();
 		const icons = assets?.spritesheet && assets.metadata ? [assets.spritesheet, assets.metadata] : [];
-		if (icons.length === 0) {
-			lifecycle(logger, "minimap.s3", "no_icons");
-		}
-		return pageFiles(
+		const keys = await pageFiles(
 			root,
 			path.resolve(import.meta.dirname, "..", "public", "viewer.js"),
 			path.resolve(import.meta.dirname, "..", "..", "web", "public", "index.html"),
 			iconPaths("static", icons),
 		);
+		if (keys.filter(key => key.startsWith("icons/")).length < icons.length || icons.length === 0) {
+			lifecycle(logger, "minimap.s3", "no_icons");
+		}
+		return keys;
 	};
 	// §10: the S3 publisher, off unless its four fields are set (§10.1); attachRestarts says what restarts it.
 	const publisher = new Publisher(store, path.join(root, "s3.json"), logger, () => ({

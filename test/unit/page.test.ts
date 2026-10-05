@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { iconPaths, pageFiles } from "../../s3/page.js";
 import { Publisher } from "../../s3/publisher.js";
@@ -74,4 +74,15 @@ test("Review Focus 5: a restart PUTs the page's files again, so a new icon expor
 test("an export manifest's names are read from static/ only, never outside it", () => {
 	assert.deepEqual(iconPaths("/c/static", ["../x.json", "/etc/passwd", "spritesheet.1.png"]),
 		["/c/static/x.json", "/c/static/passwd", "/c/static/spritesheet.1.png"]);
+});
+
+test("an icon that can't be read (not in static/, or a directory) is skipped, not a failed start", async () => {
+	const dir = await tempDir("page");
+	await writeFile(join(dir, "viewer.js"), "v");
+	await writeFile(join(dir, "index.html"), "__VIEWER_JS__");
+	await mkdir(join(dir, "static"));
+	await writeFile(join(dir, "static", "metadata.1.json"), "[]");
+	const keys = await pageFiles(join(dir, "store"), join(dir, "viewer.js"), join(dir, "index.html"),
+		iconPaths(join(dir, "static"), ["spritesheet.gone.png", ".", "metadata.1.json"]));
+	assert.deepEqual(keys.filter(k => k.startsWith("icons/")), ["icons/metadata.1.json"]);
 });

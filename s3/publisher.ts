@@ -58,6 +58,12 @@ const immutable = (key: string, asOf: number) => cacheControl(key, asOf).endsWit
 /** Mutable files that name no other file: a waiting one keeps its place, as it is read when PUT (plan ruling 5). */
 const LEAF = /\/(tags|recipes)\.json\.gz$/;
 const PAGE = "index.html";
+/**
+ * Files that never change once written, by name, not by the clock: a day index is "immutable" for Cache-Control once W
+ * has passed, but when W doesn't divide a day, the close that passes it still writes its bytes. The page's files are
+ * named by their content.
+ */
+const DATA = /\.[smck]\.gz$|^(viewer-[^/]+\.js|icons\/.+)$/;
 
 /**
  * The S3 publisher (spec §10, K15): the file lane PUTs each closed window's files once, in order, one at a time, with
@@ -82,6 +88,10 @@ export class Publisher {
 	/** Each map surface's last live file, put again at a new target's first live round (plan ruling 13). */
 	private lives = new Map<string, Buffer>();
 	private resend = false;
+	/** True until the first start: only a process's first start can find files a crash left unqueued. */
+	private first = true;
+	/** Live keys whose latest body isn't up (its PUT failed or was cut off): every round puts them again. */
+	private stale = new Set<string>();
 
 	constructor(
 		private store: Pick<Store, "onWindowClosed" | "path" | "keys" | "liveChanged">,
@@ -144,6 +154,9 @@ export class Publisher {
 
 	private async start(): Promise<void> {
 		const c = this.config();
+		const first = this.first;
+		this.first = false;
+		const mtime = (await stat(this.file).catch(() => undefined))?.mtimeMs; // before the load: it is read first
 		const saved = await loadDataFile(this.file, MIGRATIONS) as Saved | undefined;
 		if (!c.endpoint || !c.bucket || !c.accessKeyId || !c.secretAccessKey) {
 			queued.set(0);
@@ -165,11 +178,9 @@ export class Publisher {
 			region: c.region,
 		};
 		this.id = `${host}/${c.bucket}`;
-		let keys = saved?.target === this.id ? saved.queue : undefined;
-		if (!keys) {
-			// §10.5's backfill: immutable files by key, then mutable ones, each before what names it: tags and
-			// recipes, then area and day indexes, then the catalog (plan ruling 5).
-			const all = await this.store.keys();
+		// §10.5's backfill order: immutable files by key, then mutable ones, each before what names it: tags and
+		// recipes, then area and day indexes, then the catalog (plan ruling 5).
+		const backfill = (all: string[]) => {
 			const asOf = this.asOf();
 			const group = (key: string) => {
 				if (immutable(key, asOf)) {
@@ -180,7 +191,23 @@ export class Publisher {
 				}
 				return /(\/index|\/m\/[\d-]+)\.json\.gz$/.test(key) ? 2 : 1;
 			};
-			keys = [0, 1, 2, 3].flatMap(g => all.filter(key => group(key) === g));
+			return [0, 1, 2, 3].flatMap(g => all.filter(key => group(key) === g));
+		};
+		let keys = saved?.target === this.id ? saved.queue : undefined;
+		if (keys && first && mtime !== undefined) {
+			// A crash between a close's writes and its hand-over (Plan B ruling 26) leaves files newer than the last
+			// save that no queue names: queue them behind what waits, in backfill order.
+			const waiting = new Set(keys);
+			const newer: string[] = [];
+			for (const key of await this.store.keys()) {
+				if (!waiting.has(key) && (await stat(this.store.path(key))).mtimeMs > mtime) {
+					newer.push(key);
+				}
+			}
+			keys = [...keys, ...backfill(newer)];
+		}
+		if (!keys) {
+			keys = backfill(await this.store.keys());
 			lifecycle(this.logger, "minimap.s3", "backfill", { files: keys.length });
 			this.resend = true;
 		}
@@ -226,9 +253,8 @@ export class Publisher {
 	 * (immutable, also while in flight) or it names no other file (tags, recipes: read when PUT).
 	 */
 	private enqueue(keys: string[]): void {
-		const asOf = this.asOf();
 		for (const key of keys) {
-			const fixed = immutable(key, asOf);
+			const fixed = DATA.test(key);
 			if ((this.queue.has(key) && (fixed || LEAF.test(key))) || (this.current === key && fixed)) {
 				continue;
 			}
@@ -272,7 +298,7 @@ export class Publisher {
 				// Read, then stat: a mutable store file written after the last hand-over belongs to a close whose
 				// listener is still to come, and may name that close's files, still queued; it re-enqueues this one
 				// behind them (plan ruling 6). mtime is floored to Date.now()'s whole milliseconds.
-				if (key.endsWith(".gz") && !immutable(key, this.asOf())) {
+				if (key.endsWith(".gz") && !DATA.test(key)) {
 					rewritten = Math.floor((await stat(this.store.path(key))).mtimeMs) > closedAt;
 				}
 			} catch (err: any) {
@@ -313,20 +339,24 @@ export class Publisher {
 	}
 
 	/**
-	 * The live lane (§10.6): each changed map surface's live file, once, within livePut; nothing is retried. A new
-	 * target's first round also puts every live file the publisher has made since it began (plan ruling 13).
+	 * The live lane (§10.6): each changed map surface's live file, within livePut; a failed one is put again, latest
+	 * body, by the next round. A new target's first round also puts every live file the publisher has made since it
+	 * began (plan ruling 13).
 	 */
 	private async liveRound(signal: AbortSignal): Promise<void> {
-		const round = new Map(this.resend ? this.lives : []);
-		this.resend = false;
-		for (const { map, surface, t, movers } of this.store.liveChanged()) {
-			const body = gzipSync(JSON.stringify({ t, movers }));
-			this.lives.set(liveKey(map, surface), body);
-			round.set(liveKey(map, surface), body);
+		if (this.resend) {
+			this.resend = false;
+			[...this.lives.keys()].forEach(key => this.stale.add(key));
 		}
-		for (const [key, body] of round) {
-			const status = await this.put(key, body, signal, this.timing.livePut);
-			if (result(status) !== "ok") {
+		for (const { map, surface, t, movers } of this.store.liveChanged()) {
+			this.lives.set(liveKey(map, surface), gzipSync(JSON.stringify({ t, movers })));
+			this.stale.add(liveKey(map, surface));
+		}
+		for (const key of [...this.stale]) {
+			const status = await this.put(key, this.lives.get(key)!, signal, this.timing.livePut);
+			if (result(status) === "ok") {
+				this.stale.delete(key);
+			} else {
 				this.failed("live", status, 1);
 			}
 		}

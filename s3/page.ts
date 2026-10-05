@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import * as lib from "@clusterio/lib";
 
@@ -20,7 +20,10 @@ export async function pageFiles(root: string, viewer: string, html: string, icon
 	const name = `viewer-${createHash("sha256").update(js).digest("hex").slice(0, 8)}.js`;
 	const files: [string, Buffer | string][] = [[name, js]];
 	for (const icon of icons) {
-		files.push([`icons/${basename(icon)}`, await readFile(icon)]);
+		// An unreadable name (not in static/, or "." and the like) is no icon: the viewer draws text (§11.7).
+		if ((await stat(icon).catch(() => undefined))?.isFile()) {
+			files.push([`icons/${basename(icon)}`, await readFile(icon)]);
+		}
 	}
 	files.push(["index.html", (await readFile(html, "utf8")).replaceAll("__VIEWER_JS__", name)]);
 	for (const [key, data] of files) {

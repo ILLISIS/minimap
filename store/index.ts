@@ -200,23 +200,28 @@ export class Store {
 			for (const key of keys) {
 				this.catalog.add(key);
 			}
-			const info = mapInfo(this.cluster.instances());
-			const edges = await this.cluster.edges();
-			const catalog = this.catalog.json(info, edges, c, this.windowSeconds() * 1000, this.cluster.assets());
+			// Handed over in a finally: a close that throws after writing still names what it wrote (a crash before
+			// it is the publisher's mtime scan, Plan C).
 			try {
-				await this.disk.put(CATALOG, JSON.stringify(catalog));
-				keys.push(CATALOG);
-			} catch (err: any) {
-				failed(CATALOG, err);
+				const info = mapInfo(this.cluster.instances());
+				const edges = await this.cluster.edges();
+				const catalog = this.catalog.json(info, edges, c, this.windowSeconds() * 1000, this.cluster.assets());
+				try {
+					await this.disk.put(CATALOG, JSON.stringify(catalog));
+					keys.push(CATALOG);
+				} catch (err: any) {
+					failed(CATALOG, err);
+				}
+				lifecycle(this.logger, "minimap.window", "closed", {
+					ms: Math.round(performance.now() - started), areas: terrain.indexes.length, files: keys.length,
+					bytes: bytesWritten.get() - bytes, samples: movers.samples,
+				}, "verbose");
+				return keys;
+			} finally {
+				for (const listener of this.listeners) {
+					listener(keys);
+				}
 			}
-			lifecycle(this.logger, "minimap.window", "closed", {
-				ms: Math.round(performance.now() - started), areas: terrain.indexes.length, files: keys.length,
-				bytes: bytesWritten.get() - bytes, samples: movers.samples,
-			}, "verbose");
-			for (const listener of this.listeners) {
-				listener(keys);
-			}
-			return keys;
 		});
 	}
 

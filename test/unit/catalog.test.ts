@@ -28,6 +28,8 @@ test("the catalog (§8.8) lists what a viewer may fetch, with the game's names (
 	const edges = new Map([["gw-w1|nauvis", [quad(256, -256, 256, 256)]]]);
 	const assets = { spritesheet: "spritesheet.3f9a1c.png", metadata: "metadata.77aa01.json", locale: "locale.1.json" };
 	assert.equal("icons" in catalog.json(info, edges, 1, 1), false, "no export, no icons (controller ruling R2)");
+	assert.deepEqual(catalog.json(info, edges, 1, 1, { spritesheet: "../x/s.png", metadata: "m.json" }).icons,
+		{ png: "icons/s.png", json: "icons/m.json" }, "the catalog names what is uploaded: each name's basename");
 	assert.deepEqual(catalog.json(info, edges, 1759600500000, 300_000, assets), {
 		updated: 1759600500000, window_ms: 300_000, live_ms: 5000,
 		icons: { png: "icons/spritesheet.3f9a1c.png", json: "icons/metadata.77aa01.json" },

@@ -276,3 +276,20 @@ test("an unreadable tags, recipes or index file doesn't stop load(); a corrupt i
 	assert.deepEqual(movers, ["3.1.1"], "the mover after the failed chunk");
 	assert.ok(lines.some(l => l.level === "warn" && l.message.includes("item failed")));
 });
+
+test("a close that throws after writing still hands its keys to the listeners", async () => {
+	const { store, cluster, at } = await setup([solo]);
+	const seen: string[][] = [];
+	store.onWindowClosed(keys => {
+		seen.push(keys);
+	});
+	await store.ingest(3, [chunk(T + 1000, 0, 0x1234)]);
+	at(T + 300_000);
+	cluster.edges = async () => {
+		throw new Error("edges down");
+	};
+	await assert.rejects(store.closeWindow(), /edges down/);
+	assert.equal(seen.length, 1);
+	assert.ok(seen[0].some(k => k.endsWith(".c.gz")), seen[0].join());
+	assert.ok(seen[0].some(k => k.endsWith("/index.json.gz")), seen[0].join());
+});
