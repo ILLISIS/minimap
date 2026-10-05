@@ -27,20 +27,25 @@ export function mount(canvas: HTMLCanvasElement, source: Source, clock = new Clo
 	const observer = new ResizeObserver(() => viewer.resize(canvas.clientWidth, canvas.clientHeight));
 	observer.observe(canvas);
 
-	let drag: { x: number; y: number } | undefined;
+	let drag: { id: number; x: number; y: number } | undefined;
 	canvas.addEventListener("pointerdown", e => {
-		drag = { x: e.clientX, y: e.clientY };
+		if (e.button !== 0 || drag) {
+			return;
+		}
+		drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
 		canvas.setPointerCapture(e.pointerId);
 	});
 	canvas.addEventListener("pointermove", e => {
-		if (drag) {
+		if (drag?.id === e.pointerId) {
 			const { x, y, s } = viewer.view;
 			viewer.move({ x: x - ((e.clientX - drag.x) * s), y: y - ((e.clientY - drag.y) * s), s });
-			drag = { x: e.clientX, y: e.clientY };
+			drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
 		}
 	});
-	const end = () => {
-		drag = undefined;
+	const end = (e: PointerEvent) => {
+		if (drag?.id === e.pointerId) {
+			drag = undefined;
+		}
 	};
 	canvas.addEventListener("pointerup", end);
 	canvas.addEventListener("pointercancel", end);
@@ -48,8 +53,11 @@ export function mount(canvas: HTMLCanvasElement, source: Source, clock = new Clo
 	canvas.addEventListener("wheel", e => {
 		e.preventDefault();
 		const { x, y, s } = viewer.view;
-		const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (2 ** (e.deltaY / 500))));
 		const r = canvas.getBoundingClientRect();
+		// Firefox's wheel reports lines (and pages), not pixels.
+		const lines = { [WheelEvent.DOM_DELTA_LINE]: 16, [WheelEvent.DOM_DELTA_PAGE]: r.height }[e.deltaMode] ?? 1;
+		const dy = e.deltaY * lines;
+		const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * (2 ** (dy / 500))));
 		const px = e.clientX - r.left - (r.width / 2);
 		const py = e.clientY - r.top - (r.height / 2);
 		viewer.move({ x: x + (px * (s - next)), y: y + (py * (s - next)), s: next });

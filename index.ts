@@ -79,5 +79,6 @@ export const plugin: lib.PluginDeclaration = {
 			grantByDefault: true,
 		},
 	],
+	webEntrypoint: "./web",
 	routes: ["/minimap"],
 };
