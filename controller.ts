@@ -5,6 +5,7 @@ import { addRoutes } from "./http.js";
 import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
 import { MinimapDataEvent, MinimapLiveEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
+import { pageFiles } from "./s3/page.js";
 import { Publisher, attachRestarts } from "./s3/publisher.js";
 import { Store, endsPlayers, type LiveUpdate } from "./store/index.js";
 
@@ -55,6 +56,22 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 	const store = new Store(root, cluster, logger, () => controller.config.get("minimap.window_seconds"));
 	await store.load();
 	store.start();
+	// §10.8: the public page's files, at each publisher start. The icons are the default mod pack's export, which
+	// Clusterio keeps in static/ under its working directory (clusterio/packages/controller/src/routes.ts:298), under
+	// the names the catalog gives them (Plan B's controller ruling R2).
+	const pages = () => {
+		const assets = cluster.assets();
+		const icons = assets?.spritesheet && assets.metadata ? [assets.spritesheet, assets.metadata] : [];
+		if (icons.length === 0) {
+			lifecycle(logger, "minimap.s3", "no_icons");
+		}
+		return pageFiles(
+			root,
+			path.resolve(import.meta.dirname, "..", "public", "viewer.js"),
+			path.resolve(import.meta.dirname, "..", "..", "web", "public", "index.html"),
+			icons.map(icon => path.resolve("static", icon)),
+		);
+	};
 	// §10: the S3 publisher, off unless its four fields are set (§10.1); attachRestarts says what restarts it.
 	const publisher = new Publisher(store, path.join(root, "s3.json"), logger, () => ({
 		endpoint: controller.config.get("minimap.s3_endpoint"),
@@ -63,7 +80,7 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 		secretAccessKey: controller.config.get("minimap.s3_secret_access_key"),
 		region: controller.config.get("minimap.s3_region"),
 		windowMs: controller.config.get("minimap.window_seconds") * 1000,
-	}));
+	}), pages);
 	await publisher.restart();
 	attachRestarts(controller.hooks, plugin.name, publisher);
 
