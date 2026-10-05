@@ -482,9 +482,18 @@ export class Viewer {
 			keys.push(keyframeKey(sel.map, sel.surface, k));
 		}
 		for (const key of keys) {
-			this.once(key, (file: Window | Keyframe) => (key.endsWith(".k.gz")
-				? this.past.keyframe(file as Keyframe)
-				: this.past.window(file as Window)), true);
+			this.once(key, (file: Window | Keyframe) => {
+				// A load for an older span that lands after the keyframe changed would bring back movers it dropped.
+				if (this.keyAt !== k) {
+					return false;
+				}
+				if (key.endsWith(".k.gz")) {
+					this.past.keyframe(file as Keyframe);
+				} else {
+					this.past.window(file as Window);
+				}
+				return true;
+			}, true);
 		}
 	}
 
@@ -492,7 +501,7 @@ export class Viewer {
 	 * Fetch a JSON key once per selection (`keep`), or once at a time; hand it to `use` unless the selection changed.
 	 * ponytail: a failed fetch is tried again after the next refresh, switch or seek.
 	 */
-	private once<T>(key: string, use: (value: T) => void, keep: boolean): void {
+	private once<T>(key: string, use: (value: T) => unknown, keep: boolean): void {
 		if (this.loads.has(key) || this.done.has(key) || this.failed.has(key)) {
 			return;
 		}
@@ -502,8 +511,8 @@ export class Viewer {
 			if (gen === this.gen && value === undefined) {
 				this.failed.add(key);
 			} else if (gen === this.gen) {
-				use(value as T);
-				if (keep) {
+				// A `use` that returns false dropped the value: it is asked for again.
+				if (use(value as T) !== false && keep) {
 					this.done.add(key);
 				}
 				this.invalidate();

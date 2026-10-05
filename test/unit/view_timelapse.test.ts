@@ -184,3 +184,39 @@ test("no movement windows are requested above an hour a second (plan ruling 19)"
 	assert.deepEqual(requests.filter(k => k.includes("/m/")), []);
 	viewer.close();
 });
+
+test("a window load for the old span that lands after the keyframe changed is dropped, not shown", async () => {
+	const T = Date.UTC(2026, 9, 5, 12);
+	const K2 = T + 600_000;
+	const cat = catalog([[], [], [], [], []], { first: T, days: [utcDay(T)] });
+	cat.updated = T + DAY;
+	const old = moveKey("i-1", "nauvis", T + 1000);
+	const kf = (t: number, id: string): [string, unknown] => [keyframeKey("i-1", "nauvis", t), {
+		t, movers: [[id, "v", "player", "car", 0, 4, 0, 0, 0, t]],
+	}];
+	let release = () => {};
+	const held = new Promise<void>(resolve => {
+		release = resolve;
+	});
+	const { viewer, run } = setup(new Map<string, unknown>([
+		[CATALOG, cat],
+		[dayKey("i-1", "nauvis", utcDay(T)), { windows: [[T + 1000, T + 3000]], keys: [T, K2] }],
+		kf(T, "k1"), kf(K2, "k2"),
+		[old, { t: T + 1000, movers: [["p:ghost", "p", "player", "ghost"]], s: [[0, 0, 0, 0, 0, 0]] }],
+	]), undefined, key => (key === old ? held : Promise.resolve()));
+	const frames = async () => {
+		for (let i = 0; i < 5; i++) {
+			await new Promise(resolve => setTimeout(resolve, 3));
+			run();
+		}
+	};
+	await viewer.refresh();
+	viewer.seek(T + 2000);
+	await frames();
+	viewer.seek(K2 + 2000);
+	await frames();
+	release();
+	await frames();
+	assert.deepEqual(viewer.movers.map(m => m.id), ["k2"], "no ghost from the old span");
+	assert.equal(viewer.past.size, 1);
+});
