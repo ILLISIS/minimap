@@ -336,6 +336,9 @@ t.case("resync: a sample for every known mover, parked ones included, all after 
 		end
 		ctx.expect(g2 == 1, "the disconnected player ends with one gone and no sample, got " .. g2)
 		ctx.expect(storage.minimap.movers["p:mm-gh2"] == nil, "forgotten")
+	end)
+	-- the walk takes ticks (K33): about 80 in the plugins pass, whose UE surfaces hold ≈ 20,000 generated chunks
+	ctx.at(1990, function()
 		local done = mt.msgs("mm.resynced", at, game.tick, function(m) return m.trace == "mm.m1" end)
 		ctx.expect(#done == 1 and done[1].counts.movers >= 4, "mm.resynced counts the movers")
 	end)

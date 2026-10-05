@@ -53,6 +53,10 @@ end
 --- Deleted surface indexes can be reused, so the new surface must not inherit the old one's last-sent charts. `last`
 --- only gates printing (K2), so clearing it is desync-safe.
 function terrain.on_surface_deleted(e)
+	local st = storage.minimap
+	if st and st.boxes then
+		st.boxes[e.surface_index] = nil
+	end
 	local prefix = e.surface_index .. ":"
 	for key in pairs(last) do
 		if key:sub(1, #prefix) == prefix then
@@ -148,36 +152,121 @@ function terrain.surfaces(st)
 	tick.send{ type = "mm.surfaces", list = list }
 end
 
---- §6.7 step 4 (K33): every charted chunk of every captured force, pushed forced and past the cap, then the sentinel.
---- On the tile's surface that is a walk of the bounds; elsewhere a walk of get_chunks(), in this tick (≈ 3–8 ms for
---- 15,000 chunks, estimated). ponytail: one tick per start; a bounding box per surface is the upgrade (K33).
-function terrain.resync(st)
-	local r = st.resync
-	for _, surface in pairs(game.surfaces) do
-		local function push(x, y)
-			for fi in pairs(st.forces) do
-				local force = game.forces[fi]
-				if force and is_charted(force, surface, { x = x, y = y }) then
-					core.push(st.queue, { si = surface.index, fi = fi, x = x, y = y, forced = true })
-					st.pending[core.key(surface.index, fi, x, y)] = true
-					r.chunks = r.chunks + 1
-				end
-			end
+--- K33's upgrade: each surface's rows of generated chunks, in `ys` (the order they appeared) and `rows` (y → its x
+--- extent, half-open like core.bounds), so the resync walks them a slice a tick instead of get_chunks() in one (owner,
+--- 2026-10-05: one 90-ms tick for 15,129 chunks in the bench). Rows, not one box, and only the rows that exist: chunks
+--- far apart (UE's test edges are 95,000 tiles out) would make a box of millions of positions. A row's extent spans its
+--- gaps, and a deleted chunk stays in it: the walk reads those as uncharted.
+local function grow(boxes, si, x, y)
+	local b = boxes[si]
+	if not b then
+		b = { ys = {}, rows = {} }
+		boxes[si] = b
+	end
+	local row = b.rows[y]
+	if row then
+		row[1], row[2] = math.min(row[1], x), math.max(row[2], x + 1)
+	else
+		b.rows[y] = { x, x + 1 }
+		b.ys[#b.ys + 1] = y
+	end
+end
+
+--- The rows from get_chunks(), once per save (control.lua's ensure); on_chunk_generated grows them after.
+function terrain.boxes()
+	local boxes = {}
+	for _, s in pairs(game.surfaces) do
+		for c in s.get_chunks() do
+			grow(boxes, s.index, c.x, c.y)
 		end
-		if st.tile and surface.name == st.tile.surface then
-			local b = st.bounds
-			for x = b.x1, b.x2 - 1 do
-				for y = b.y1, b.y2 - 1 do
-					push(x, y)
-				end
+	end
+	return boxes
+end
+
+function terrain.on_chunk_generated(e)
+	local st = storage.minimap
+	if st and st.boxes then
+		grow(st.boxes, e.surface.index, e.position.x, e.position.y)
+	end
+end
+
+--- §6.7 step 4 (K33): every charted chunk of every captured force, pushed forced and past the cap, then the sentinel.
+--- This starts the walk; terrain.walk does it over the next ticks, surface by surface.
+function terrain.resync(st)
+	local list = {}
+	for _, s in pairs(game.surfaces) do
+		list[#list + 1] = s.index
+	end
+	st.resync.walk = { list = list, k = 0 }
+end
+
+--- A surface to walk and its area: the tile's bounds on its surface, else its rows of generated chunks.
+local function area(st, si)
+	local s = si and game.get_surface(si)
+	if s and st.tile and s.name == st.tile.surface then
+		return s, st.bounds
+	end
+	return s, s and st.boxes[si]
+end
+
+--- Row i of an area: its y and x extent (half-open), or nil past the last. The bounds' rows are its y1 .. y2 - 1.
+local function row(b, i)
+	if not b.ys then
+		local y = b.y1 + i - 1
+		if y < b.y2 then
+			return y, b.x1, b.x2
+		end
+		return nil
+	end
+	local y = b.ys[i]
+	if y then
+		local r = b.rows[y]
+		return y, r[1], r[2]
+	end
+end
+
+--- §6.10 step 1: the resync's walk, at most core.RESYNC_READS positions read and core.RESYNC_CHUNKS charted chunks
+--- queued a tick; the sentinel follows the last surface's last row.
+function terrain.walk(st)
+	local r = st.resync
+	local w = r and r.walk
+	if not w then
+		return
+	end
+	local s, b = area(st, w.list[w.k])
+	local reads, pushed = 0, 0
+	while reads < core.RESYNC_READS and pushed < core.RESYNC_CHUNKS do
+		local y, x1, x2
+		if s and b then
+			y, x1, x2 = row(b, w.i)
+		end
+		if not y then -- this surface is done, gone or empty: the next one
+			w.k = w.k + 1
+			if w.k > #w.list then
+				core.push(st.queue, { resynced = r.trace })
+				r.walk = nil
+				return
 			end
+			s, b = area(st, w.list[w.k])
+			w.i, w.x = 1, nil
 		else
-			for c in surface.get_chunks() do
-				push(c.x, c.y)
+			local x = w.x or x1
+			if x >= x2 then -- this row is done: the next
+				w.i, w.x = w.i + 1, nil
+			else
+				reads = reads + 1
+				local pos = { x = x, y = y }
+				for fi in pairs(st.forces) do
+					local force = game.forces[fi]
+					if force and is_charted(force, s, pos) then
+						core.push(st.queue, { si = s.index, fi = fi, x = x, y = y, forced = true })
+						st.pending[core.key(s.index, fi, x, y)] = true
+						r.chunks, pushed = r.chunks + 1, pushed + 1
+					end
+				end
+				w.x = x + 1
 			end
 		end
 	end
-	core.push(st.queue, { resynced = r.trace })
 end
-
 return terrain

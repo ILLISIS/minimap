@@ -26,6 +26,7 @@ local function ensure()
 	if fresh then
 		terrain.refresh_forces()
 	end
+	storage.minimap.boxes = storage.minimap.boxes or terrain.boxes() -- K33: once per save
 	return storage.minimap
 end
 
@@ -58,8 +59,8 @@ function control.config(json)
 	end
 end
 
---- mm_rt.resync(trace) (§6.7, K5, K33): the surfaces, then every charted captured chunk, forced past the compare and
---- the cap; mm.resynced follows the last of them. A newer resync replaces one still running (plan ruling 16).
+--- mm_rt.resync(trace) (§6.7, K5, K33): the surfaces, then every charted captured chunk over the next ticks, forced
+--- past the compare and the cap; mm.resynced follows the last of them. A newer resync replaces one still running (plan ruling 16).
 function control.resync(trace)
 	assert(type(trace) == "string", "minimap resync: the trace must be a string")
 	local st = ensure()
@@ -86,6 +87,7 @@ control.events[defines.events.on_tick] = function(e)
 	if not (st and st.configured) then
 		return
 	end
+	terrain.walk(st)
 	terrain.take(st)
 	overlays.step(st)
 	movers.step(st, e.tick)
@@ -101,6 +103,7 @@ control.events[clusterio_api.events.on_server_startup] = function()
 end
 control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
+control.events[defines.events.on_chunk_generated] = terrain.on_chunk_generated
 control.events[defines.events.on_surface_deleted] = terrain.on_surface_deleted
 for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed", "on_forces_merged" }) do
 	control.events[defines.events[name]] = terrain.refresh_forces

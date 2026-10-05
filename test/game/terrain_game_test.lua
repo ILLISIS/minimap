@@ -251,6 +251,53 @@ t.case("resync: a second resync before the first ends completes once, under its 
 		end)
 	end)
 
+t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted chunks a tick, and covers chunks "
+	.. "generated after the boxes were made (K33; owner, 2026-10-05)", function(ctx)
+	local at
+	ctx.at(3000, function()
+		mt.surface("mm-w", 0, 319, 0, 319) -- chunks 0 .. 10 each way, made after the config's boxes
+		mt.surface("mm-w", 960, 991, 0, 31) -- and chunk 30 east, so row 0 spans 31 chunks
+		for x = 0, 7 do
+			for y = 0, 4 do
+				mt.chart("mm-w", x, y, mt.solid(20))
+			end
+		end
+		mt.chart("mm-w", 30, 0, mt.solid(21))
+	end)
+	ctx.at(3002, function()
+		local b = storage.minimap.boxes[game.surfaces["mm-w"].index]
+		local row0 = b and b.rows[0]
+		ctx.expect(row0 ~= nil and row0[1] <= 0 and row0[2] >= 31 and #b.ys >= 11,
+			"on_chunk_generated grew mm-w's rows: row 0 to chunk 30, got " .. (row0 and row0[1] .. ".." .. row0[2] or "none")
+			.. " over " .. (b and #b.ys or 0) .. " rows")
+		at = game.tick
+		local before = queued()
+		mm_rt.resync("mm.w1")
+		ctx.expect(queued() == before and storage.minimap.resync.chunks == 0, "nothing queued in the resync's own tick")
+	end)
+	for k = 1, 3 do
+		ctx.at(3002 + k, function()
+			local r = storage.minimap.resync
+			ctx.expect(r ~= nil and r.chunks <= k * core.RESYNC_CHUNKS,
+				"at most " .. k * core.RESYNC_CHUNKS .. " chunks after " .. k .. " ticks, got " .. (r and r.chunks or "none"))
+		end)
+	end
+	ctx.at(3600, function()
+		local now = game.tick
+		local done = mt.msgs("mm.resynced", at, now, function(m) return m.trace == "mm.w1" end)
+		ctx.expect(#done == 1 and done[1].counts.chunks >= 41, "mm.resynced, counting mm-w's 41 charted chunks")
+		local seen = {}
+		for _, m in ipairs(chunks(at, now, "mm-w")) do
+			seen[m.x .. "," .. m.y] = true
+		end
+		local n = 0
+		for _ in pairs(seen) do
+			n = n + 1
+		end
+		ctx.expect(n == 41 and seen["30,0"], "every charted chunk of mm-w, chunk 30 included, got " .. n)
+	end)
+end)
+
 t.case("terrain: nothing after on_server_startup until the next config (§6.1)", function(ctx)
 	ctx.at(3860, function()
 		-- the minimap's own handler, called directly: raising the event would reset UE's sides in the plugins pass

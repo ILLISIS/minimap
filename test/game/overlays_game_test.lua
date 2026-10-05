@@ -157,7 +157,7 @@ t.case("resync: tags and recipes; at most 8 machines a tick over a chunk of 60 a
 		at = game.tick
 		mm_rt.resync("mm.o1")
 	end)
-	ctx.at(2500, function()
+	ctx.at(2800, function() -- the walk takes ticks (K33): about 80 in the plugins pass
 		local now, per, seen, n = game.tick, {}, {}, 0
 		for _, m in ipairs(mt.msgs("mm.recipe", at, now)) do
 			per[m.tick] = (per[m.tick] or 0) + 1
