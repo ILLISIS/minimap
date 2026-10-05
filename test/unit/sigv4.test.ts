@@ -69,7 +69,7 @@ test("fetch sends the port in Host and the signed headers as signed, so a server
 		try {
 			const target = { ...AWS, endpoint: `http://127.0.0.1:${port}`, bucket: "map" };
 			const headers = { "cache-control": "public, max-age=60", "content-type": "application/gzip" };
-			const { url, init } = signedPut(target, "maps.json.gz", Buffer.from("x"), headers);
+			const { url, init } = signedPut(target, "maps.json.gz", Buffer.from([0x1f, 0x8b, 0x08, 0xff]), headers);
 			assert.equal((await fetch(url, init)).status, 200);
 			assert.deepEqual(seen, [{ host: `127.0.0.1:${port}`, ok: true }]);
 		} finally {

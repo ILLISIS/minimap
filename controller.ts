@@ -5,6 +5,7 @@ import { addRoutes } from "./http.js";
 import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
 import { MinimapDataEvent, MinimapLiveEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
+import { Publisher, attachRestarts } from "./s3/publisher.js";
 import { Store, endsPlayers, type LiveUpdate } from "./store/index.js";
 
 /** A LiveUpdate as the event (plan ruling 18: the constructor takes the contract's fields in order). */
@@ -54,6 +55,17 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 	const store = new Store(root, cluster, logger, () => controller.config.get("minimap.window_seconds"));
 	await store.load();
 	store.start();
+	// §10: the S3 publisher, off unless its four fields are set (§10.1); attachRestarts says what restarts it.
+	const publisher = new Publisher(store, path.join(root, "s3.json"), logger, () => ({
+		endpoint: controller.config.get("minimap.s3_endpoint"),
+		bucket: controller.config.get("minimap.s3_bucket"),
+		accessKeyId: controller.config.get("minimap.s3_access_key_id"),
+		secretAccessKey: controller.config.get("minimap.s3_secret_access_key"),
+		region: controller.config.get("minimap.s3_region"),
+		windowMs: controller.config.get("minimap.window_seconds") * 1000,
+	}));
+	await publisher.restart();
+	attachRestarts(controller.hooks, plugin.name, publisher);
 
 	// §9.2: one broadcast per arriving batch and map surface, to the subscribers of "<map>|<surface>".
 	const broadcast = (updates: LiveUpdate[]) => {
@@ -76,9 +88,14 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 		}
 	});
 	addRoutes(controller, store);
-	// §8.10's shutdown close: Clusterio awaits this hook (clusterio/packages/controller/src/Controller.ts:547).
-	// Plan C's publisher drains its lane after it, in this hook.
+	// §8.10's shutdown: the store's last close, then the publisher's drain and final live file. Clusterio awaits this
+	// hook for 15 s (plan ruling 7); past that it logs a timeout and stops anyway, and the drain's own timers keep the
+	// process up until it ends.
 	controller.hooks.shutdown.attach(plugin.name, async () => {
-		await store.close();
+		try {
+			await store.close();
+		} finally {
+			await publisher.shutdown();
+		}
 	});
 }
