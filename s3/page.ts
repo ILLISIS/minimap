@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import * as lib from "@clusterio/lib";
+
+/**
+ * The icon files in `dir`. The names come from a mod pack's export manifest, which anyone who may update a mod pack
+ * can set, so only each name's last segment counts: a "../config-controller.json" never leaves `dir`.
+ */
+export const iconPaths = (dir: string, names: string[]) => names.map(n => resolve(dir, basename(n)));
 
 /**
  * The public page's files (spec §10.8), written into the store's folder for the file lane to PUT like any key:

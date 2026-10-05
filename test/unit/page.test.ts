@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { pageFiles } from "../../s3/page.js";
+import { iconPaths, pageFiles } from "../../s3/page.js";
 import { Publisher } from "../../s3/publisher.js";
 import { CONFIG, FAST, fakeFetch, fakeLogger, fakeStore, quiet, tempDir, until } from "./fakes.js";
 
@@ -69,4 +69,9 @@ test("Review Focus 5: a restart PUTs the page's files again, so a new icon expor
 	assert.deepEqual(calls.map(c => c.key), ["icons/spritesheet.aaaa.png", "icons/spritesheet.bbbb.png"],
 		"no backfill on the second start: the target is the same");
 	await p.shutdown();
+});
+
+test("an export manifest's names are read from static/ only, never outside it", () => {
+	assert.deepEqual(iconPaths("/c/static", ["../x.json", "/etc/passwd", "spritesheet.1.png"]),
+		["/c/static/x.json", "/c/static/passwd", "/c/static/spritesheet.1.png"]);
 });

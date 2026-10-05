@@ -5,7 +5,7 @@ import { addRoutes } from "./http.js";
 import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
 import { MinimapDataEvent, MinimapLiveEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
-import { pageFiles } from "./s3/page.js";
+import { iconPaths, pageFiles } from "./s3/page.js";
 import { Publisher, attachRestarts } from "./s3/publisher.js";
 import { Store, endsPlayers, type LiveUpdate } from "./store/index.js";
 
@@ -69,7 +69,7 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 			root,
 			path.resolve(import.meta.dirname, "..", "public", "viewer.js"),
 			path.resolve(import.meta.dirname, "..", "..", "web", "public", "index.html"),
-			icons.map(icon => path.resolve("static", icon)),
+			iconPaths("static", icons),
 		);
 	};
 	// §10: the S3 publisher, off unless its four fields are set (§10.1); attachRestarts says what restarts it.
