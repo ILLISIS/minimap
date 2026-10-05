@@ -211,7 +211,7 @@ t.case("resync: the surfaces, then only charted chunks, sent though unchanged, t
 			at = game.tick
 			mm_rt.resync("mm.r1")
 		end)
-		ctx.at(430, function()
+		ctx.at(445, function() -- the walk takes ticks (K33)
 			local now = game.tick
 			local tiles = {}
 			for _, m in ipairs(mt.msgs("mm.surfaces", at, now)) do
@@ -241,9 +241,11 @@ t.case("resync: a second resync before the first ends completes once, under its 
 		ctx.at(450, function()
 			at = game.tick
 			mm_rt.resync("mm.r2")
+		end)
+		ctx.at(452, function() -- r2's walk is under way (plan ruling 16)
 			mm_rt.resync("mm.r3")
 		end)
-		ctx.at(470, function()
+		ctx.at(495, function()
 			local done = mt.msgs("mm.resynced", at, game.tick)
 			ctx.expect(#done == 1 and done[1].trace == "mm.r3", "only mm.r3 completes")
 			local all = chunks(at, game.tick, "mm-r")
@@ -253,16 +255,19 @@ t.case("resync: a second resync before the first ends completes once, under its 
 
 t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted chunks a tick, and covers chunks "
 	.. "generated after the boxes were made (K33; owner, 2026-10-05)", function(ctx)
-	local at
+	local at, last
 	ctx.at(3000, function()
 		mt.surface("mm-w", 0, 319, 0, 319) -- chunks 0 .. 10 each way, made after the config's boxes
-		mt.surface("mm-w", 960, 991, 0, 31) -- and chunk 30 east, so row 0 spans 31 chunks
+		mt.surface("mm-w", 960, 960, 0, 0) -- and chunk 30 east (Factorio generates a few past it)
 		for x = 0, 7 do
 			for y = 0, 4 do
 				mt.chart("mm-w", x, y, mt.solid(20))
 			end
 		end
-		mt.chart("mm-w", 30, 0, mt.solid(21))
+		-- the tile's surface walks its bounds (chunks -1 .. 0 each way), not its rows
+		mt.chart("mm-tile", -1, -1, mt.solid(22))
+		mt.chart("mm-tile", 0, 0, mt.solid(22))
+		mt.chart("mm-tile", 1, 0, mt.solid(22))
 	end)
 	ctx.at(3002, function()
 		local b = storage.minimap.boxes[game.surfaces["mm-w"].index]
@@ -270,6 +275,8 @@ t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted 
 		ctx.expect(row0 ~= nil and row0[1] <= 0 and row0[2] >= 31 and #b.ys >= 11,
 			"on_chunk_generated grew mm-w's rows: row 0 to chunk 30, got " .. (row0 and row0[1] .. ".." .. row0[2] or "none")
 			.. " over " .. (b and #b.ys or 0) .. " rows")
+		last = row0 and row0[2] - 1 or 30
+		mt.chart("mm-w", last, 0, mt.solid(21)) -- row 0's last position: a walk that skips a row's end misses it
 		at = game.tick
 		local before = queued()
 		mm_rt.resync("mm.w1")
@@ -294,7 +301,9 @@ t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted 
 		for _ in pairs(seen) do
 			n = n + 1
 		end
-		ctx.expect(n == 41 and seen["30,0"], "every charted chunk of mm-w, chunk 30 included, got " .. n)
+		ctx.expect(n == 41 and seen[last .. ",0"], "every charted chunk of mm-w, row 0's last included, got " .. n)
+		ctx.expect(#chunks(at, now, "mm-tile", -1, -1) == 1 and #chunks(at, now, "mm-tile", 0, 0) == 1
+			and #chunks(at, now, "mm-tile", 1, 0) == 0, "the tile's bounds: (-1, -1) and (0, 0), not (1, 0)")
 	end)
 end)
 

@@ -113,7 +113,7 @@ local function scan(st, t)
 	st.walk, st.wi, st.next_scan = walk, 1, t + core.SCAN
 end
 
---- §6.10 step 4: poll up to core.WALK movers; with the walk done and core.SCAN ticks passed, scan instead.
+--- §6.10 step 5: poll up to core.WALK movers; with the walk done and core.SCAN ticks passed, scan instead.
 function movers.step(st, t)
 	if st.wi > #st.walk then
 		if t >= st.next_scan then

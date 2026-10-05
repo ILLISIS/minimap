@@ -45,7 +45,7 @@ function tick.oversize()
 	return oversize
 end
 
---- §6.10 step 5: encode each message once, cut the batch byte-exactly, print the lines.
+--- §6.10 step 6: encode each message once, cut the batch byte-exactly, print the lines.
 function tick.flush(t)
 	if #outbox == 0 then
 		return

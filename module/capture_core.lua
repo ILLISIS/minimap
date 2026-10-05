@@ -7,7 +7,8 @@ core.CAP = 20000 -- K4: event pushes past this many waiting are dropped and coun
 core.CHARTS = 2 -- K4: chart items taken a tick
 core.MACHINES = 8 -- K33: resync machines sent a tick
 core.RESYNC_READS = 256 -- K33: chunk positions the resync's walk reads a tick (is_chunk_charted)
-core.RESYNC_CHUNKS = 16 -- K33: charted chunks the resync's walk queues a tick
+core.RESYNC_CHUNKS = 16 -- K33: the walk stops for the tick once this many charted chunks are queued (its last position
+-- finishes its forces, so a tick can queue up to 15 + the captured forces)
 core.WALK = 8 -- K6: movers polled a tick
 core.SCAN = 30 -- K6: ticks at least from one scan to the next
 core.EPS = 1 -- K6: tiles off the prediction, on either axis, before a sample

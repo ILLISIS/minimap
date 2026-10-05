@@ -122,7 +122,7 @@ local function read(st, item)
 		d = chart and helpers.encode_string(chart) or nil }
 end
 
---- §6.10 step 2: up to core.CHARTS items a tick. The resync's sentinel marks its chunks done (control.lua's finish).
+--- §6.10 step 3: up to core.CHARTS items a tick. The resync's sentinel marks its chunks done (control.lua's finish).
 function terrain.take(st)
 	for _ = 1, core.CHARTS do
 		local item = core.pop(st.queue)
@@ -156,7 +156,8 @@ end
 --- extent, half-open like core.bounds), so the resync walks them a slice a tick instead of get_chunks() in one (owner,
 --- 2026-10-05: one 90-ms tick for 15,129 chunks in the bench). Rows, not one box, and only the rows that exist: chunks
 --- far apart (UE's test edges are 95,000 tiles out) would make a box of millions of positions. A row's extent spans its
---- gaps, and a deleted chunk stays in it: the walk reads those as uncharted.
+--- gaps, and a deleted chunk stays in it: the walk reads those as uncharted, so its length follows the rows' spans, not
+--- the chunk count.
 local function grow(boxes, si, x, y)
 	local b = boxes[si]
 	if not b then
@@ -172,7 +173,8 @@ local function grow(boxes, si, x, y)
 	end
 end
 
---- The rows from get_chunks(), once per save (control.lua's ensure); on_chunk_generated grows them after.
+--- The rows from get_chunks(): for a new storage and at every on_server_startup (control.lua), so chunks generated while
+--- the plugin was off are walked too; on_chunk_generated grows them in between.
 function terrain.boxes()
 	local boxes = {}
 	for _, s in pairs(game.surfaces) do
@@ -225,8 +227,8 @@ local function row(b, i)
 	end
 end
 
---- §6.10 step 1: the resync's walk, at most core.RESYNC_READS positions read and core.RESYNC_CHUNKS charted chunks
---- queued a tick; the sentinel follows the last surface's last row.
+--- §6.10 step 2: the resync's walk, at most core.RESYNC_READS positions read a tick, stopping once core.RESYNC_CHUNKS
+--- charted chunks are queued; the sentinel follows the last surface's last row.
 function terrain.walk(st)
 	local r = st.resync
 	local w = r and r.walk

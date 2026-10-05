@@ -108,7 +108,7 @@ function overlays.machines_in(st, surface, force, pos)
 	end
 end
 
---- §6.10 step 3 (K33): at most core.MACHINES of the resync's machines a tick.
+--- §6.10 step 4 (K33): at most core.MACHINES of the resync's machines a tick.
 function overlays.step(st)
 	for _ = 1, core.MACHINES do
 		local e = core.pop(st.machines)
