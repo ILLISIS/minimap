@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -522,5 +522,35 @@ test("a mutable file written in the same millisecond as its close's hand-over is
 		Date.now = now;
 	}
 	assert.equal(calls.length, 1);
+	await p.shutdown();
+});
+
+test("a hand-over during the lane's read of a mutable file isn't a lost wake: the key goes up at once", async () => {
+	const store = await fakeStore();
+	let armed = false;
+	const slow = {
+		...store,
+		path: (key: string) => {
+			if (armed) {
+				armed = false;
+				// The next close's whole hand-over runs inside the lane's read: file written, listeners called.
+				for (const end = Date.now() + 3; Date.now() < end;) { /* a later mtime than the last hand-over */ }
+				writeFileSync(store.path(key), "newer");
+				store.announce(key);
+			}
+			return store.path(key);
+		},
+	};
+	// The first PUT fails, so the retry's read comes when the queue and the hand-over chain are idle.
+	const { fetch, calls } = fakeFetch((_, all) => {
+		armed = all.length === 1;
+		return all.length === 1 ? 503 : 200;
+	});
+	const p = setup(slow, fetch);
+	await p.restart();
+	await writeFile(store.path("maps.json.gz"), gzipSync("old"));
+	store.announce("maps.json.gz");
+	await until(() => calls.length >= 2, 1000);
+	assert.equal(calls[calls.length - 1].body.toString(), "newer");
 	await p.shutdown();
 });

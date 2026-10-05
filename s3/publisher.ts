@@ -283,6 +283,11 @@ export class Publisher {
 				continue;
 			}
 			if (rewritten) {
+				if (this.closedAt !== closedAt) {
+					// A hand-over ran during the read: its wake was lost, and its enqueue has the key (or will).
+					this.current = undefined;
+					continue;
+				}
 				// Keep its place and wait for the close's hand-over: carrying on would PUT the files naming it first.
 				this.queue = new Set([key, ...this.queue]);
 				this.current = undefined;
