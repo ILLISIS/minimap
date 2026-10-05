@@ -5,6 +5,8 @@
 		{ "path": "../../../packages/host/tsconfig.node.json" },
 		{ "path": "../../../packages/controller/tsconfig.node.json" }
 	],
-	"include": ["./*.ts", "./shared/**/*.ts", "./store/**/*.ts", "./s3/**/*.ts", "./test/unit/**/*.ts"],
+	"include": [
+		"./*.ts", "./shared/**/*.ts", "./store/**/*.ts", "./s3/**/*.ts", "./web/view/**/*.ts", "./test/unit/**/*.ts"
+	],
 	"exclude": ["./dist/*"]
 }
