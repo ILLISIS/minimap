@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import * as lib from "@clusterio/lib";
@@ -99,6 +99,8 @@ test("retries by status: back off on network errors, 5xx and 429; auth waits; an
 	const dropped = lines.find(l => l.message === "minimap.s3 dropped")!;
 	assert.deepEqual([dropped.level, dropped.meta.key, dropped.meta.status], ["error", "c.c.gz", 400]);
 	await p.shutdown();
+	const logged = JSON.stringify(lines);
+	assert.ok(!logged.includes(CONFIG.accessKeyId!) && !logged.includes(CONFIG.secretAccessKey!));
 });
 
 test("a missing file is skipped", async () => {
@@ -414,3 +416,111 @@ test("a minimap.s3_* change, the default mod pack's id and a mod pack change res
 		await hooks.modPacksUpdated.invoke([]);
 		assert.equal(restarts, 3);
 	});
+
+test("a file the lane reaches before its close's hand-over waits at the head: no catalog or index naming a file " +
+	"not yet up goes first", async () => {
+	const store = await fakeStore();
+	let release!: () => void;
+	const held = new Promise<number>(resolve => {
+		release = () => resolve(200);
+	});
+	const { fetch, calls } = fakeFetch((_, all) => (all.length === 1 ? held : 200));
+	const p = setup(store, fetch);
+	await p.restart();
+	await store.close("a/1.c.gz", "a/index.json.gz", "maps.json.gz");
+	await until(() => calls.length === 1);
+	await quiet(20);
+	// The next close writes 2.c.gz, then the index; its listener is yet to run: the lane reaches index, catalog.
+	await writeFile(store.path("a/2.c.gz"), gzipSync("2"));
+	await writeFile(store.path("a/index.json.gz"), gzipSync("names 1 and 2"));
+	release();
+	await quiet(50);
+	await writeFile(store.path("maps.json.gz"), gzipSync("names the index"));
+	store.announce("a/2.c.gz", "a/index.json.gz", "maps.json.gz");
+	await until(() => calls.length === 4);
+	await quiet(50);
+	assert.deepEqual(calls.map(c => c.key), ["a/1.c.gz", "a/2.c.gz", "a/index.json.gz", "maps.json.gz"]);
+	await p.shutdown();
+});
+
+test("a restart stops the old live timer and lane: one live PUT per change, one lane's retries", async () => {
+	const store = await fakeStore();
+	const { fetch, calls } = fakeFetch(call => (call.key.endsWith("live.json.gz") ? 200 : 403));
+	let config = CONFIG;
+	const p = setup(store, fetch, () => config, [], { ...FAST, auth: 100 });
+	await p.restart();
+	await store.close("a.c.gz");
+	await until(() => calls.length === 1);
+	config = { ...CONFIG, accessKeyId: "KEYID5678" };
+	await p.restart();
+	const before = calls.length;
+	for (let t = 1; t <= 5; t += 1) {
+		const n = calls.length;
+		store.moved({ map: "i-1", surface: "nauvis", t, movers: [] });
+		await until(() => calls.length > n && calls[calls.length - 1].key.endsWith("live.json.gz"));
+	}
+	await quiet(250);
+	const lane = calls.slice(before).filter(c => c.key === "a.c.gz").length;
+	assert.ok(lane <= 6, `${lane} retries of a.c.gz in about 0.5 s: one lane at 100 ms`);
+	assert.equal(calls.filter(c => c.key.endsWith("live.json.gz")).length, 5);
+	await p.shutdown();
+});
+
+test("off, no live round runs and the queue gauge is 0", async () => {
+	const store = await fakeStore();
+	let rounds = 0;
+	const counted = {
+		onWindowClosed: store.onWindowClosed, path: store.path, keys: store.keys,
+		liveChanged: () => {
+			rounds += 1;
+			return store.liveChanged();
+		},
+	};
+	let config = CONFIG;
+	const { fetch } = fakeFetch(() => 503);
+	const p = new Publisher(counted, join(store.root, "s3.json"), fakeLogger(), () => config, undefined, fetch, FAST);
+	await p.restart();
+	await store.close("a.c.gz");
+	await until(() => queued.get() === 1);
+	config = { ...CONFIG, secretAccessKey: null };
+	await p.restart();
+	rounds = 0;
+	await quiet(120);
+	assert.equal(rounds, 0);
+	assert.equal(queued.get(), 0);
+	await p.shutdown();
+});
+
+test("a start that throws zeroes the queue gauge", async () => {
+	const store = await fakeStore();
+	let config = CONFIG;
+	const { fetch } = fakeFetch(() => 503);
+	const p = setup(store, fetch, () => config);
+	await p.restart();
+	await store.close("a.c.gz");
+	await until(() => queued.get() === 1);
+	config = { ...CONFIG, endpoint: "acct.example.com" };
+	await p.restart();
+	assert.equal(queued.get(), 0);
+	await p.shutdown();
+});
+
+test("a mutable file written in the same millisecond as its close's hand-over is PUT, not left waiting", async () => {
+	const store = await fakeStore();
+	const { fetch, calls } = fakeFetch();
+	const p = setup(store, fetch);
+	await p.restart();
+	const now = Date.now;
+	const frozen = 1_700_000_000_000;
+	await writeFile(store.path("maps.json.gz"), gzipSync("x"));
+	await utimes(store.path("maps.json.gz"), frozen / 1000, frozen / 1000);
+	Date.now = () => frozen;
+	try {
+		store.announce("maps.json.gz");
+		await quiet(150);
+	} finally {
+		Date.now = now;
+	}
+	assert.equal(calls.length, 1);
+	await p.shutdown();
+});

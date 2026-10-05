@@ -117,6 +117,7 @@ export class Publisher {
 			} catch (err) {
 				// A start that throws (a missing page file, an endpoint with no scheme) is off: forget the target, so
 				// the next good start backfills what closes in between (plan ruling 4).
+				queued.set(0);
 				await saveDataFile(this.file, MIGRATIONS, { target: "", queue: [] });
 				throw err;
 			}
@@ -145,6 +146,7 @@ export class Publisher {
 		const c = this.config();
 		const saved = await loadDataFile(this.file, MIGRATIONS) as Saved | undefined;
 		if (!c.endpoint || !c.bucket || !c.accessKeyId || !c.secretAccessKey) {
+			queued.set(0);
 			// Off: the saved target is forgotten, so the next start backfills (plan ruling 4).
 			if (saved?.target) {
 				await saveDataFile(this.file, MIGRATIONS, { target: "", queue: [] });
@@ -281,7 +283,12 @@ export class Publisher {
 				continue;
 			}
 			if (rewritten) {
+				// Keep its place and wait for the close's hand-over: carrying on would PUT the files naming it first.
+				this.queue = new Set([key, ...this.queue]);
 				this.current = undefined;
+				await new Promise<void>(resolve => {
+					this.wake = resolve;
+				});
 				continue;
 			}
 			attempt += 1;
