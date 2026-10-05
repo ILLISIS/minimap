@@ -26,7 +26,7 @@ local function ensure()
 	if fresh then
 		terrain.refresh_forces()
 	end
-	storage.minimap.boxes = storage.minimap.boxes or terrain.boxes() -- K33: once per save
+	storage.minimap.boxes = storage.minimap.boxes or terrain.boxes() -- K33: a new storage, and every boot (below)
 	return storage.minimap
 end
 
@@ -99,10 +99,11 @@ control.on_init = ensure
 control.on_configuration_changed = ensure
 -- §6.1: a start, crash or rollback. Nothing is captured until the instance plugin configures this boot.
 control.events[clusterio_api.events.on_server_startup] = function()
-	local st = ensure()
-	st.configured = false
-	-- K33: the rows again, at boot: chunks generated while the plugin was off, or not through on_chunk_generated
-	st.boxes = terrain.boxes()
+	-- K33: ensure() rebuilds the rows at boot, so chunks generated while the plugin was off are walked too
+	if storage.minimap then
+		storage.minimap.boxes = nil
+	end
+	ensure().configured = false
 end
 control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
