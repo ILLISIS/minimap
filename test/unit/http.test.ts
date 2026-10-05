@@ -1,14 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
-import { authorize } from "../../http.js";
+import { addRoutes, authorize } from "../../http.js";
 import { MinimapLiveEvent } from "../../messages.js";
 import { Store } from "../../store/index.js";
 import { fakeLogger, tempDir } from "./fakes.js";
 
 const secret = Buffer.from("minimap test secret");
 type User = { tokenValidAfter: number; checkPermission(permission: string): void };
-const viewer: User = { tokenValidAfter: 100, checkPermission: () => undefined };
+const viewer: User = {
+	tokenValidAfter: 100,
+	checkPermission: p => {
+		if (p !== "minimap.view") {
+			throw new Error("Permission denied");
+		}
+	},
+};
 const stranger: User = {
 	tokenValidAfter: 100,
 	checkPermission: () => {
@@ -31,6 +38,12 @@ test("auth (§9.1, K14): 401 without a token, or a bad, stale, foreign or host o
 	assert.equal(auth({ "x-access-token": token("viewer", 200, "user", "another secret") }), 401);
 	assert.equal(auth({ "x-access-token": token("stranger", 200) }), 403);
 	assert.equal(auth({ "x-access-token": token("viewer", 200) }), 200);
+	assert.equal(auth({ "x-access-token": token("viewer", 100) }), 200, "iat equal to tokenValidAfter is valid");
+	assert.equal(
+		auth({ "x-access-token": jwt.sign({ aud: "user", user: "viewer" }, secret, { noTimestamp: true }) }),
+		401,
+		"no iat",
+	);
 	assert.equal(auth({ authorization: `Bearer ${token("viewer", 200)}` }), 200, "Authorization: Bearer");
 });
 
@@ -57,4 +70,33 @@ test("a subscriber's replay: the owned live movers of its <map>|<surface>, split
 	);
 	assert.deepEqual(store.subscribed("i-3|nauvis").movers, []);
 	assert.deepEqual(store.subscribed("junk").movers, [], "a filter without | names nothing");
+});
+
+test("the data route joins the wildcard segments: a traversal key is 400, a missing token 401", async () => {
+	type Handler = (req: any, res: any) => Promise<void> | void;
+	const routes: Record<string, Handler> = {};
+	const controller = {
+		app: { get: (p: string, h: Handler) => (routes[p] = h) },
+		authSecret: secret,
+		users,
+		config: { get: () => 60 },
+	};
+	addRoutes(controller as any, {} as Store);
+	const call = async (key: string[], tok?: string) => {
+		const sent: any[] = [];
+		const res: any = {
+			sendStatus: (c: number) => sent.push(c),
+			set: () => res,
+			type: () => res,
+			send: () => sent.push("body"),
+		};
+		const get = (n: string) => (n === "x-access-token" ? tok : undefined);
+		await routes["/api/minimap/data/*key"]({ params: { key }, get }, res);
+		return sent;
+	};
+	const ok = token("viewer", 200);
+	assert.deepEqual(await call(["a/../../etc/x.gz"], ok), [400]);
+	assert.deepEqual(await call([".."], ok), [400]);
+	assert.deepEqual(await call(["a", "..", "x.gz"], ok), [400]);
+	assert.deepEqual(await call(["a/../../etc/x.gz"]), [401]);
 });
