@@ -26,6 +26,13 @@ function pick(want: Partial<Selection>): void {
 	const next = viewer.catalog && choose(viewer.catalog, want);
 	if (next) {
 		viewer.select(next);
+	} else if (viewer.sel) {
+		// No such choice: the controls show the selection again.
+		const { map, surface, force, instance } = viewer.sel;
+		Object.assign($("map"), { value: map });
+		Object.assign($("surface"), { value: surface });
+		Object.assign($("force"), { value: force });
+		Object.assign($("instance"), { value: instance ?? "" });
 	}
 }
 

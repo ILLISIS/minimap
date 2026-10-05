@@ -318,3 +318,75 @@ test("a live update that arrives after a switch to another force of the same sur
 	await settle();
 	assert.equal(viewer.present.size, 0);
 });
+
+test("a refresh during paused history keeps the movers and fetches no window or keyframe", async () => {
+	const T = Date.UTC(2026, 9, 5, 12);
+	const files = new Map<string, unknown>([
+		[CATALOG, catalog([[], [], [], [], []], { days: ["2026-10-05"] })],
+		[dayKey("i-1", "nauvis", "2026-10-05"), { windows: [[T + 1000, T + 3000]], keys: [T] }],
+		[keyframeKey("i-1", "nauvis", T), { t: T, movers: [["1.5.v7", "v", "player", "car", 0, 4, 0, 0, 0, T - 9e3]] }],
+		[moveKey("i-1", "nauvis", T + 1000), {
+			t: T + 1000, movers: [["p:bob", "p", "player", "bob"]], s: [[0, 0, 0, 0, 1, 0], [0, 2000, 2, 0, 1, 0]],
+		}],
+	]);
+	const { viewer, settle, requests, run } = setup(files);
+	viewer.seek(T + 2000);
+	await viewer.refresh();
+	await settle();
+	assert.equal(viewer.movers.length, 2);
+	requests.length = 0;
+	await viewer.refresh();
+	run();
+	assert.equal(viewer.movers.length, 2, "not blinked off while the day index is fetched again");
+	assert.deepEqual(requests.filter(k => k.endsWith(".m.gz") || k.endsWith(".k.gz")), []);
+});
+
+test("a catalog that lands after close selects and subscribes to nothing", async () => {
+	let release = () => {};
+	const held = new Promise<void>(resolve => {
+		release = resolve;
+	});
+	const { viewer, lives } = setup(history(), undefined, key => (key === CATALOG ? held : Promise.resolve()));
+	const refreshed = viewer.refresh();
+	viewer.close();
+	release();
+	await refreshed;
+	assert.equal(viewer.sel, undefined);
+	assert.equal(lives.length, 0);
+});
+
+test("a live update that throws doesn't stop the later ones", async () => {
+	const { viewer, settle, lives } = setup(new Map([[CATALOG, catalog([[], [], [], [], []])]]));
+	await viewer.refresh();
+	await settle();
+	const T = 2_000_000_000;
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: 5 as never });
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 0, 0, T]] });
+	await settle();
+	assert.equal(viewer.present.size, 1);
+});
+
+test("a forward step reloads when a change file closed since the held index (it was the open window)", async () => {
+	const files = history();
+	files.set(indexKey(A0), { snaps: [100], changes: [[50, 50]] });
+	const { viewer, settle } = setup(files);
+	viewer.seek(200);
+	await viewer.refresh();
+	await settle();
+	assert.deepEqual(colour(viewer, A0, 0), BLUE, "the snapshot; file 150 isn't listed yet");
+	files.set(indexKey(A0), { snaps: [100], changes: [[50, 50], [150, 160]] });
+	await viewer.refresh();
+	viewer.seek(210);
+	await settle();
+	assert.deepEqual(colour(viewer, A0, 0), GREEN, "record 150 is in (100, 210]");
+});
+
+test("choose passes over a map or surface whose forces are empty", () => {
+	const cat = catalog([[], [], [], [], []]);
+	const maps = cat.maps;
+	const bare = { ...maps["i-1"].surfaces.nauvis, forces: {} };
+	cat.maps = { "i-0": { ...maps["i-1"], surfaces: { nauvis: bare } }, ...maps };
+	const want = { map: "i-1", surface: "nauvis", force: "player", instance: undefined };
+	assert.deepEqual(choose(cat), want);
+	assert.deepEqual(choose(cat, { map: "i-0" }), want);
+});

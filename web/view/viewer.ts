@@ -16,16 +16,23 @@ import { Lru, MAX_SCALE, MIN_SCALE, paint, paintChunk, rgba, visible, type View 
 /** What the viewer shows: a map surface and force; with `instance`, clipped to that instance's bounds (§11.5). */
 export type Selection = { map: string; surface: string; force: string; instance?: string };
 
-/** `want` where the catalog has it, else the first map, surface or force there; undefined for an empty catalog. */
+/** `want` where the catalog has it, else the first map, surface or force there that has a force; undefined if none. */
 export function choose(catalog: Catalog, want: Partial<Selection> = {}): Selection | undefined {
 	const has = (o: object, k: string | undefined): k is string => k !== undefined && Object.hasOwn(o, k);
-	const map = has(catalog.maps, want.map) ? want.map : Object.keys(catalog.maps)[0];
-	const info = catalog.maps[map];
-	const surface = info && has(info.surfaces, want.surface) ? want.surface : Object.keys(info?.surfaces ?? {})[0];
-	const forces = info?.surfaces[surface]?.forces ?? {};
-	const force = has(forces, want.force) ? want.force : Object.keys(forces)[0];
-	const instance = info && has(info.instances, want.instance) ? want.instance : undefined;
-	return force === undefined ? undefined : { map, surface, force, instance };
+	// `want` first, then the rest in catalog order: a map or surface without forces (`forces: {}`) is passed over.
+	const order = (o: object, k: string | undefined) => [...has(o, k) ? [k] : [], ...Object.keys(o)];
+	for (const map of order(catalog.maps, want.map)) {
+		const info = catalog.maps[map];
+		for (const surface of order(info.surfaces, want.surface)) {
+			const forces = info.surfaces[surface].forces;
+			const force = has(forces, want.force) ? want.force : Object.keys(forces)[0];
+			if (force !== undefined) {
+				const instance = has(info.instances, want.instance) ? want.instance : undefined;
+				return { map, surface, force, instance };
+			}
+		}
+	}
+	return undefined;
 }
 
 /** One decoded area: its RGBA at time t. A live area follows live chunks and the refresh. */
@@ -120,7 +127,7 @@ export class Viewer {
 	/** The catalog, at start and every 60 s (§11.3). With nothing selected yet, selects its first map surface. */
 	async refresh(): Promise<void> {
 		const catalog = await this.json<Catalog>(CATALOG);
-		if (!catalog) {
+		if (!catalog || this.closed) {
 			return;
 		}
 		this.catalog = catalog;
@@ -177,7 +184,8 @@ export class Viewer {
 			this.stopLive = this.source.live(sel.map, sel.surface, catalog, u => {
 				// In order: a chunk's inflate is async, and a later state must land last.
 				this.queued += 1;
-				this.chain = this.chain.then(() => this.onLive(u, gen)).finally(() => {
+				// ponytail: a throwing update is dropped, or the rejection would skip every later one.
+				this.chain = this.chain.then(() => this.onLive(u, gen)).catch(() => {}).finally(() => {
 					this.queued -= 1;
 				});
 			});
@@ -360,7 +368,10 @@ export class Viewer {
 		const open = live && a.z === 0 && this.source.open ? await this.source.open(areaKey(a)) : undefined;
 		const index = await this.indexOf(a, e, live);
 		const to = live ? Infinity : t;
-		if (e && !live && !e.live && e.t <= t && !index.snaps.some(s => s > e.t && s <= t)) {
+		// A change file that closed since e's index (it was the open window, listed after e.t) is missed by a step.
+		const listed = (i: AreaIndex) => i.changes.filter(([f]) => f <= t).length;
+		if (e && !live && !e.live && e.t <= t && !index.snaps.some(s => s > e.t && s <= t)
+			&& listed(index) === listed(e.index)) {
 			await this.forward(a, e, index, t, gen);
 			return Object.assign(e, { t, index, stale: false, version: e.version + 1 });
 		}
@@ -465,6 +476,10 @@ export class Viewer {
 		const days = [utcDay(t - DAY), utcDay(t)].filter(day => surf?.days.includes(day));
 		for (const day of days.filter(d => !this.days.has(d))) {
 			this.once(dayKey(sel.map, sel.surface, day), (index: DayIndex) => this.days.set(day, index), false);
+		}
+		// Until every day index is held, k is unknown: leave what `past` has (a refresh clears `days`).
+		if (days.some(d => !this.days.has(d))) {
+			return;
 		}
 		const indexes = days.flatMap(day => this.days.get(day) ?? []);
 		const k = Math.max(...indexes.flatMap(i => i.keys.filter(key => key <= t)));
