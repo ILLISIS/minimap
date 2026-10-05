@@ -1,5 +1,6 @@
 // The public page (spec §3, §10.8, §11.1): the viewer over the bucket it is served from, with plain <select> and
-// <input type="range"> controls. Game text reaches the page only through textContent (REV M-13).
+// <input type="range"> controls, the timelapse (§11.4) and "ended" (§11.8). Game text reaches the page only through
+// textContent (REV M-13).
 import { mount } from "./map_view.js";
 import { Clock } from "./view/movers.js";
 import { bucketSource } from "./view/source.js";
@@ -48,4 +49,31 @@ viewer.subscribe(() => {
 	const instances = Object.entries(map.instances).filter(([, i]) => i.bounds);
 	const named = instances.map(([id, i]): [string, string] => [id, i.name]);
 	fill($("instance"), [["", "Whole map"], ...named], sel.instance ?? "");
+});
+
+// §11.4: the timelapse; §11.8: "ended".
+const slider = $<HTMLInputElement>("slider");
+slider.addEventListener("input", () => {
+	const t = Number(slider.value);
+	viewer.seek(t >= viewer.range()[1] ? undefined : t);
+});
+$("play").addEventListener("click", () => viewer.play(viewer.speed > 0 ? 0 : Number($("speed").value)));
+$("speed").addEventListener("change", () => {
+	if (viewer.speed > 0) {
+		viewer.play(Number($("speed").value));
+	}
+});
+$("live").addEventListener("click", () => viewer.seek(undefined));
+viewer.subscribe(() => {
+	const [first, now] = viewer.range();
+	slider.min = String(first);
+	slider.max = String(now);
+	slider.value = String(viewer.at ?? now);
+	$("play").textContent = viewer.speed > 0 ? "Pause" : "Play";
+	const ended = viewer.ended();
+	let status = viewer.at === undefined ? "Live" : new Date(viewer.at).toLocaleString();
+	if (ended !== undefined) {
+		status = `${status}. Ended at ${new Date(ended).toLocaleString()}`;
+	}
+	$("status").textContent = status;
 });

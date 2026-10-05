@@ -9,6 +9,7 @@
 	body { display: flex; flex-direction: column; }
 	.bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; }
 	#canvas { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+	#slider { flex: 1; min-width: 200px; }
 </style>
 </head>
 <body>
@@ -19,6 +20,19 @@
 	<select id="instance"></select>
 </div>
 <canvas id="canvas"></canvas>
+<div class="bar">
+	<input id="slider" type="range" step="any">
+	<button id="play">Play</button>
+	<select id="speed">
+		<option value="60">1 min/s</option>
+		<option value="600">10 min/s</option>
+		<option value="3600" selected>1 h/s</option>
+		<option value="21600">6 h/s</option>
+		<option value="86400">1 day/s</option>
+	</select>
+	<button id="live">Live</button>
+	<span id="status"></span>
+</div>
 <!-- Plan C fills in the uploaded name, viewer-<sha8>.js (spec §10.8). -->
 <script src="__VIEWER_JS__"></script>
 </body>

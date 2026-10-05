@@ -57,6 +57,8 @@ export class Viewer {
 	height = 0;
 	/** The time shown; undefined is live, following the data clock. */
 	at?: number;
+	/** Timelapse speed, data ms a browser ms (§11.4: 60, a minute a second, to 86,400, a day a second); 0 is paused. */
+	speed = 0;
 	/** The areas the last frame showed: listed in the catalog, at the view's level. */
 	shown: { key: string; a: Area }[] = [];
 	/** The movers the last frame showed. */
@@ -81,7 +83,11 @@ export class Viewer {
 	private failed = new Set<string>();
 	private framed = false;
 	private closed = false;
+	/** The browser time of the last played frame. */
+	private played = 0;
 	private stopLive = () => {};
+	/** Whether the live subscription or poll started with the surface's `live` flag set. */
+	private liveFlag?: boolean;
 	/** Live updates, applied one after another; `queued` counts those not yet applied. */
 	private chain = Promise.resolve();
 	private queued = 0;
@@ -123,6 +129,10 @@ export class Viewer {
 			}
 			this.days.clear();
 			this.failed.clear();
+			// A surface that gained or lost its live file since the live source started.
+			if (catalog.maps[this.sel.map]?.surfaces[this.sel.surface]?.live !== this.liveFlag) {
+				this.startLive();
+			}
 			for (const key of [...this.done].filter(k => k.endsWith("/recipes.json.gz"))) {
 				this.done.delete(key);
 			}
@@ -148,9 +158,21 @@ export class Viewer {
 			c.clear();
 		}
 		this.sel = sel;
-		const gen = this.gen;
-		if (this.catalog) {
-			this.stopLive = this.source.live(sel.map, sel.surface, this.catalog, u => {
+		this.startLive();
+		this.loadTags();
+		this.changed();
+		this.invalidate();
+	}
+
+	/** (Re)start the live subscription or poll for the selection; the catalog's `live` flag is what it starts with. */
+	private startLive(): void {
+		const { sel, catalog, gen } = this;
+		this.stopLive();
+		this.stopLive = () => {};
+		this.liveFlag = undefined;
+		if (sel && catalog) {
+			this.liveFlag = catalog.maps[sel.map]?.surfaces[sel.surface]?.live;
+			this.stopLive = this.source.live(sel.map, sel.surface, catalog, u => {
 				// In order: a chunk's inflate is async, and a later state must land last.
 				this.queued += 1;
 				this.chain = this.chain.then(() => this.onLive(u, gen)).finally(() => {
@@ -158,9 +180,6 @@ export class Viewer {
 				});
 			});
 		}
-		this.loadTags();
-		this.changed();
-		this.invalidate();
 	}
 
 	/** Pan and zoom; the scale is clamped to [1/8, 32] tiles a pixel (§11.2). */
@@ -181,6 +200,30 @@ export class Viewer {
 		this.failed.clear();
 		this.changed();
 		this.invalidate();
+	}
+
+	/** Play from the time shown (from the start when live) at `speed`; 0 pauses. */
+	play(speed: number): void {
+		this.speed = speed;
+		this.played = this.clock.perf();
+		if (speed > 0 && this.at === undefined) {
+			this.at = this.range()[0];
+		}
+		this.changed();
+		this.invalidate();
+	}
+
+	/** The slider's span (§11.4): the surface's first record to now, or to the last close once ended. */
+	range(): [number, number] {
+		const sel = this.sel;
+		const now = this.ended() ?? this.clock.now();
+		return [(sel && this.catalog?.maps[sel.map]?.surfaces[sel.surface]?.first) ?? now, now];
+	}
+
+	/** §11.8 (REV M-2): the catalog's `updated`, once it is more than 2W + 60 s old by the data clock. */
+	ended(): number | undefined {
+		const c = this.catalog;
+		return c && this.clock.now() - c.updated > (2 * c.window_ms) + 60_000 ? c.updated : undefined;
 	}
 
 	/** The page is gone: no more frames, live updates or results. */
@@ -218,12 +261,23 @@ export class Viewer {
 		if (this.closed) {
 			return;
 		}
+		if (this.speed > 0 && this.at !== undefined) {
+			const now = this.clock.perf();
+			this.at += (now - this.played) * this.speed;
+			this.played = now;
+			// Caught up: live again.
+			if (this.at >= this.range()[1]) {
+				this.at = undefined;
+				this.speed = 0;
+			}
+			this.changed();
+		}
 		const t = this.time();
 		this.sync(t);
 		this.movers = (this.at === undefined ? this.present : this.past).at(t);
 		this.draw(this);
-		// §11.8: live, a frame follows only while a mover on screen still moves (K31 stops it after 60 s).
-		if (this.at === undefined && this.movers.some(m => m.moving && this.onScreen(m.x, m.y))) {
+		// §11.8: a frame follows while playing, or live while a mover on screen still moves (K31: at most 60 s).
+		if (this.speed > 0 || (this.at === undefined && this.movers.some(m => m.moving && this.onScreen(m.x, m.y)))) {
 			this.invalidate();
 		}
 	}
@@ -258,7 +312,8 @@ export class Viewer {
 				this.load(key, a, e, t, live);
 			}
 		}
-		if (!live) {
+		// ponytail: above an hour a second, history's movers aren't loaded (W = 60 s at a day a second: 1,440 files).
+		if (!live && this.speed <= 3600) {
 			this.loadMovers(t);
 		}
 	}
@@ -290,12 +345,20 @@ export class Viewer {
 		});
 	}
 
-	/** The area at t (§11.3): the snapshot at or before t and the change files after it; live, the open window too. */
+	/**
+	 * The area at t (§11.3). §11.4: history steps forward from the area held, unless that goes back or past a
+	 * snapshot (a jump), and then reloads from the snapshot. A live area reloads at each refresh, its files from the
+	 * bytes cache, with the open window again (plan ruling 7).
+	 */
 	private async step(a: Area, e: Entry | undefined, t: number, live: boolean, gen: number): Promise<Entry> {
 		// The open window before the index: a close between the two then shows its records twice, never not at all.
 		const open = live && a.z === 0 && this.source.open ? await this.source.open(areaKey(a)) : undefined;
-		const index = await this.json<AreaIndex>(indexKey(a)) ?? { snaps: [], changes: [] };
+		const index = await this.indexOf(a, e, live);
 		const to = live ? Infinity : t;
+		if (e && !live && !e.live && e.t <= t && !index.snaps.some(s => s > e.t && s <= t)) {
+			await this.forward(a, e, index, t, gen);
+			return Object.assign(e, { t, index, stale: false, version: e.version + 1 });
+		}
 		const out = await this.reload(a, index, to, gen);
 		const newest = index.changes.at(-1)?.[1] ?? -Infinity;
 		Object.assign(out, { live, t: live ? newest : t, version: (e?.version ?? 0) + 1 });
@@ -304,6 +367,26 @@ export class Viewer {
 			out.t = Math.max(out.t, rec.t);
 		}
 		return out;
+	}
+
+	/** History keeps the index it holds until the refresh marks it stale: files are immutable; new ones come later. */
+	private async indexOf(a: Area, e: Entry | undefined, live: boolean): Promise<AreaIndex> {
+		if (e && !live && !e.live && !e.stale) {
+			return e.index;
+		}
+		return await this.json<AreaIndex>(indexKey(a)) ?? { snaps: [], changes: [] };
+	}
+
+	/** Apply the records in (e.t, t] from the change files that hold them. */
+	private async forward(a: Area, e: Entry, index: AreaIndex, t: number, gen: number): Promise<void> {
+		for (const [first] of index.changes.filter(([f, l]) => l > e.t && f <= t)) {
+			const bytes = await this.file(changeKey(a, first), gen);
+			for (const rec of bytes ? decodeChange(first, bytes) : []) {
+				if (rec.t > e.t && rec.t <= t) {
+					paint(e.rgba, rec);
+				}
+			}
+		}
 	}
 
 	/** The snapshot at or before `to` and the change files after it (§8.4 bounds them), replayed up to `to`. */

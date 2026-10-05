@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Select, Space } from "antd";
+import { Button, Select, Slider, Space } from "antd";
 import { PageHeader, PageLayout } from "@clusterio/web_ui";
 import { mount, type Mounted } from "./map_view.js";
 import type { Source } from "./view/source.js";
@@ -46,6 +46,41 @@ function Pickers({ viewer }: { viewer: Viewer }) {
 	</Space>;
 }
 
+const SPEEDS: [number, string][] = [
+	[60, "1 min/s"], [600, "10 min/s"], [3600, "1 h/s"], [21_600, "6 h/s"], [86_400, "1 day/s"],
+];
+
+/** The timelapse (§11.4): a slider over [first, now] on wall-clock time, played at a minute to a day a second. */
+function Timelapse({ viewer }: { viewer: Viewer }) {
+	useViewer(viewer);
+	const [speed, setSpeed] = useState(3600);
+	const [first, now] = viewer.range();
+	if (!viewer.sel || !Number.isFinite(now)) {
+		return null;
+	}
+	const playing = viewer.speed > 0;
+	return <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+		<Slider
+			min={first} max={now} value={viewer.at ?? now} tooltip={{ open: false }}
+			onChange={t => viewer.seek(t >= now ? undefined : t)}
+		/>
+		<Space wrap>
+			<Button onClick={() => viewer.play(playing ? 0 : speed)}>{playing ? "Pause" : "Play"}</Button>
+			<Select
+				style={{ width: 110 }} value={speed} options={SPEEDS.map(([value, label]) => ({ value, label }))}
+				onChange={s => {
+					setSpeed(s);
+					if (playing) {
+						viewer.play(s);
+					}
+				}}
+			/>
+			<Button disabled={viewer.at === undefined} onClick={() => viewer.seek(undefined)}>Live</Button>
+			<span>{viewer.at === undefined ? "Live" : new Date(viewer.at).toLocaleString()}</span>
+		</Space>
+	</Space>;
+}
+
 /** The Clusterio page (spec §3, §11.1): the viewer over the controller's routes and live subscription. */
 export default function MinimapPage({ source }: { source: Source }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
@@ -61,5 +96,6 @@ export default function MinimapPage({ source }: { source: Source }) {
 			ref={canvas}
 			style={{ display: "block", width: "100%", height: "70vh", background: "#000", touchAction: "none" }}
 		/>
+		{mounted && <Timelapse viewer={mounted.viewer} />}
 	</PageLayout>;
 }
