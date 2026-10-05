@@ -92,6 +92,9 @@ export function decodeChange(t0: number, bytes: Uint8Array): Rec[] {
 				pos[i] = i;
 			} else {
 				pos[i] = v.getUint16(o, true);
+				if (pos[i] >= BLOCK) {
+					throw new Error("change file position out of range");
+				}
 				o += 2;
 			}
 			col[i] = v.getUint16(o, true);

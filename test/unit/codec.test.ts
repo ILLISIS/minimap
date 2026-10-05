@@ -80,3 +80,20 @@ test("snapshots round-trip: MMS1, then 512 × 512 little-endian pixels (§8.4)",
 	assert.equal(bytes[6], 7919 % 256, "pixel 1's low byte first");
 	assert.deepEqual(decodeSnap(bytes), px);
 });
+
+test("MMC1's literal bytes: little-endian fields, and n = 0 marks a whole block (§8.3)", () => {
+	const whole = { t: 0x01020304 + 7, block: 2, pos: block(i => i), col: block(i => 0xabcd - i) };
+	const sparse = { t: 0x01020304 + 7, block: 0x12, pos: Uint16Array.from([0x0102]), col: Uint16Array.from([0xabcd]) };
+	const bytes = encodeChange(7, [{ ...sparse, t: 0x01020304 + 7 }, whole]);
+	assert.deepEqual([...bytes.subarray(0, 4 + 7 + 4)], [
+		0x4d, 0x4d, 0x43, 0x31, 0x04, 0x03, 0x02, 0x01, 0x12, 0x01, 0x00, 0x02, 0x01, 0xcd, 0xab,
+	]);
+	const h = 4 + 7 + 4;
+	assert.deepEqual([...bytes.subarray(h, h + 9)], [0x04, 0x03, 0x02, 0x01, 0x02, 0x00, 0x00, 0xcd, 0xab]);
+	assert.equal(bytes.length, h + 7 + 2048);
+});
+
+test("a sparse position of 1024 or more is refused", () => {
+	const bad = encodeChange(0, [{ t: 0, block: 1, pos: Uint16Array.from([1024]), col: Uint16Array.from([1]) }]);
+	assert.throws(() => decodeChange(0, bad), /out of range/);
+});
