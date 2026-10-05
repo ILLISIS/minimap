@@ -239,6 +239,22 @@ t.case("movers: a moving train split mid-walk keeps one journey, polled on which
 	end)
 end)
 
+t.case("movers: a journey adopted through materialized and destroyed before any sample ends with gone (UE refusal after "
+	.. "materialized)", function(ctx)
+	local car, at
+	ctx.at(1700, function()
+		car = assert(S.create_entity{ name = "car", position = { 500, 100 }, force = "player" })
+		at = game.tick
+		movers.materialized({ type = "vehicle", edge = "e", cid = "c" }, car, { j = "mm.adopt-gone" }, { trace = "mm.ag" })
+		ctx.expect(storage.minimap.movers["mm.adopt-gone"].s == "mm-m", "the adopted mover knows its surface")
+		car.destroy()
+	end)
+	ctx.at(1720, function()
+		local gone = mt.samples("mm.adopt-gone", at, game.tick)
+		ctx.expect(#gone == 1 and gone[1].gone == true, "one gone, got " .. #gone)
+	end)
+end)
+
 t.case("movers and terrain: a deleted surface's queued chunks are skipped and its vehicle ends with gone (Review "
 	.. "Focus 2)", function(ctx)
 	local car, j, at
@@ -331,7 +347,8 @@ t.case("crossing (UE): the destination takes the source's journey once, under th
 	.. "join (§13, K28, K29; spike 11 P8)", function(ctx)
 	if not control.ue then
 		ctx.at(3800, function()
-			ctx.expect(#mt.msgs("mm.adopt", 0, game.tick) == 0, "standalone: no mm.adopt, ever")
+			ctx.expect(#mt.msgs("mm.adopt", 0, game.tick, function(m) return m.j ~= "mm.adopt-gone" end) == 0,
+				"standalone: no mm.adopt, ever (bar the materialized case's direct call)")
 		end)
 		return
 	end

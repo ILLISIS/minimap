@@ -43,6 +43,7 @@ function control.config(json)
 		and int(tile.x) and int(tile.y) and int(tile.size) and tile.size > 0 and tile.size % 64 == 0),
 		"minimap config: bad tile: " .. tostring(json))
 	local st = ensure()
+	terrain.refresh_forces() -- players may have joined while the plugin was off, or forces merged
 	st.tile, st.bounds, st.configured = tile, core.bounds(tile), true
 	if not st.seeded then
 		movers.seed(st, game.tick) -- plan ruling 5: by the first config the instance id is set (K7)
@@ -100,7 +101,8 @@ control.events[clusterio_api.events.on_server_startup] = function()
 end
 control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
-for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed" }) do
+control.events[defines.events.on_surface_deleted] = terrain.on_surface_deleted
+for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed", "on_forces_merged" }) do
 	control.events[defines.events[name]] = terrain.refresh_forces
 end
 

@@ -201,6 +201,8 @@ function movers.materialized(ep, h, data, meta)
 	if displaced then
 		movers.gone(st, displaced) -- plan ruling 30
 	end
+	-- a crossing UE refuses after materialized destroys the train unsampled; with s set, gone clears the controller's owner
+	st.movers[data.j].s = (ep.type == "train" and h.front_stock or h).surface.name
 	tick.send{ type = "mm.adopt", j = data.j, trace = meta.trace }
 	tick.send{ type = "trace", op = "minimap.journey", phase = "adopted", level = "verbose", trace = meta.trace,
 		journey = data.j, edge = ep.edge, cid = ep.cid }

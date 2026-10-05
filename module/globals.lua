@@ -21,7 +21,11 @@ mm_rt = {
 		end,
 		--- mm_rt.seam.force("<force>"): capture that force as if it had a player (M7; headless has none).
 		force = function(name)
-			storage.minimap.forces[game.forces[name].index] = true
+			local st, index = storage.minimap, game.forces[name].index
+			-- ponytail: test-only (headless servers have no players); kept in storage so a config's refresh_forces keeps it
+			st.seam_forces = st.seam_forces or {}
+			st.seam_forces[index] = true
+			st.forces[index] = true
 		end,
 	},
 }

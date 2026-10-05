@@ -31,8 +31,8 @@ local function is_charted(force, surface, pos)
 	return force.is_chunk_charted(surface, pos)
 end
 
---- M7: only forces with a player are captured. Read at install, and at every player creation, force change and
---- removal.
+--- M7: only forces with a player are captured. Read at install, at every config, and at every player creation, force
+--- change, removal and merge.
 function terrain.refresh_forces()
 	local st = storage.minimap
 	if not st then
@@ -42,7 +42,23 @@ function terrain.refresh_forces()
 	for _, p in pairs(game.players) do
 		forces[p.force.index] = true
 	end
+	for index in pairs(st.seam_forces or {}) do
+		if game.forces[index] then
+			forces[index] = true
+		end
+	end
 	st.forces = forces
+end
+
+--- Deleted surface indexes can be reused, so the new surface must not inherit the old one's last-sent charts. `last`
+--- only gates printing (K2), so clearing it is desync-safe.
+function terrain.on_surface_deleted(e)
+	local prefix = e.surface_index .. ":"
+	for key in pairs(last) do
+		if key:sub(1, #prefix) == prefix then
+			last[key] = nil
+		end
+	end
 end
 
 --- §6.2's handler (≈ 1 µs): a captured chunk of a captured force, not already waiting, joins the queue; past the cap it

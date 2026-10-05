@@ -84,6 +84,7 @@ t.case("terrain: other surfaces are captured anywhere; the tile clips its own; e
 	ctx.at(3700, function()
 		at = game.tick
 		mm_rt.config("{}")
+		mm_rt.seam.force("player") -- the config re-read the forces with players
 		mm_rt.seam.charted("mm-tile", "player", 1, 0)
 	end)
 	ctx.at(3704, function()
@@ -263,3 +264,37 @@ t.case("terrain: nothing after on_server_startup until the next config (§6.1)",
 		ctx.expect(#chunks(game.tick - 3, game.tick, "mm-a", 1, 2) == 0, "and nothing printed")
 	end)
 end)
+
+t.case("terrain: a config re-reads the forces with players (M7)", function(ctx)
+	ctx.at(3710, function()
+		storage.minimap.forces[9999] = true
+		mt.config()
+		ctx.expect(storage.minimap.forces[9999] == nil, "a stale force index is gone after the config")
+		ctx.expect(storage.minimap.forces[game.forces.player.index] == true, "a seam-marked force survives a config")
+	end)
+end)
+
+t.case("terrain: a new surface on a deleted surface's index is sent a chunk equal to the deleted one's (M2 review)",
+	function(ctx)
+		local at, si
+		ctx.at(3712, function()
+			local s = mt.surface("mm-x", 0, 31, 0, 31)
+			si = s.index
+			mt.chart("mm-x", 0, 0, mt.solid(0x2222))
+			mm_rt.seam.charted("mm-x", "player", 0, 0)
+		end)
+		ctx.at(3715, function()
+			ctx.expect(#chunks(0, game.tick, "mm-x", 0, 0) == 1, "mm-x's chunk was sent")
+			game.delete_surface("mm-x")
+		end)
+		ctx.at(3720, function()
+			local s = mt.surface("mm-y", 0, 31, 0, 31)
+			ctx.expect(s.index == si, "the engine reused index " .. si .. ", got " .. s.index)
+			mt.chart("mm-y", 0, 0, mt.solid(0x2222))
+			at = game.tick
+			mm_rt.seam.charted("mm-y", "player", 0, 0)
+		end)
+		ctx.at(3724, function()
+			ctx.expect(#chunks(at, game.tick, "mm-y", 0, 0) == 1, "the same bytes on the reused index are sent")
+		end)
+	end)
