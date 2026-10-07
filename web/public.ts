@@ -4,7 +4,7 @@
 import { mount } from "./map_view.js";
 import { Clock } from "./view/movers.js";
 import { bucketSource } from "./view/source.js";
-import { choose, type Selection } from "./view/viewer.js";
+import { choose, placeOf, places, type Selection } from "./view/viewer.js";
 
 /**
  * §22.2 (M15): the public page draws live movers 16 s behind: its delivery (the 1-s batch, the 5-s live PUT, 5 s of
@@ -28,40 +28,50 @@ function fill(select: HTMLSelectElement, options: [string, string][], value: str
 	select.hidden = options.length < 2;
 }
 
-function pick(want: Partial<Selection>): void {
-	const next = viewer.catalog && choose(viewer.catalog, want);
+/**
+ * §22.1 (M14): the map (each world, then each instance), its surfaces, and the force; `fill` hides a picker with
+ * one choice, so the force shows only when the surface has more than one.
+ */
+function controls(): void {
+	const { catalog, sel } = viewer;
+	if (!catalog || !sel) {
+		return;
+	}
+	const list = places(catalog);
+	const surfaces = list.find(p => p.key === placeOf(sel))?.surfaces ?? [];
+	const at = surfaces.findIndex(s => s.map === sel.map && s.surface === sel.surface);
+	fill($("map"), list.map(p => [p.key, p.label]), placeOf(sel));
+	fill($("surface"), surfaces.map((s, i) => [String(i), s.surface]), String(at));
+	fill($("force"), Object.keys(catalog.maps[sel.map].surfaces[sel.surface].forces).map(f => [f, f]), sel.force);
+}
+
+function pick(want: Partial<Selection> | undefined): void {
+	const next = viewer.catalog && want && choose(viewer.catalog, { force: viewer.sel?.force, ...want });
 	if (next) {
 		viewer.select(next);
-	} else if (viewer.sel) {
-		// No such choice: the controls show the selection again.
-		const { map, surface, force, instance } = viewer.sel;
-		Object.assign($("map"), { value: map });
-		Object.assign($("surface"), { value: surface });
-		Object.assign($("force"), { value: force });
-		Object.assign($("instance"), { value: instance ?? "" });
+	} else {
+		controls(); // no such choice: the controls show the selection again
 	}
 }
 
-$("map").addEventListener("change", () => pick({ map: $("map").value }));
-$("surface").addEventListener("change", () => pick({ ...viewer.sel, surface: $("surface").value }));
+/** Surface i of the first picker's entry `key`. */
+function entry(key: string, i: number): Partial<Selection> | undefined {
+	return viewer.catalog && places(viewer.catalog).find(p => p.key === key)?.surfaces[i];
+}
+
+$("map").addEventListener("change", () => pick(entry($("map").value, 0)));
+$("surface").addEventListener("change", () => {
+	pick(viewer.sel && entry(placeOf(viewer.sel), Number($("surface").value)));
+});
 $("force").addEventListener("change", () => pick({ ...viewer.sel, force: $("force").value }));
-$("instance").addEventListener("change", () => pick({ ...viewer.sel, instance: $("instance").value || undefined }));
 
 let shown: unknown[] = [];
 viewer.subscribe(() => {
-	const { catalog, sel } = viewer;
 	// Once per catalog or selection: the controls aren't rebuilt at every played frame.
-	if (!catalog || !sel || (shown[0] === catalog && shown[1] === sel)) {
-		return;
+	if (viewer.catalog && viewer.sel && (shown[0] !== viewer.catalog || shown[1] !== viewer.sel)) {
+		shown = [viewer.catalog, viewer.sel];
+		controls();
 	}
-	shown = [catalog, sel];
-	const map = catalog.maps[sel.map];
-	fill($("map"), Object.entries(catalog.maps).map(([id, m]) => [id, m.title]), sel.map);
-	fill($("surface"), Object.keys(map.surfaces).map(s => [s, s]), sel.surface);
-	fill($("force"), Object.keys(map.surfaces[sel.surface].forces).map(f => [f, f]), sel.force);
-	const instances = Object.entries(map.instances).filter(([, i]) => i.bounds);
-	const named = instances.map(([id, i]): [string, string] => [id, i.name]);
-	fill($("instance"), [["", "Whole map"], ...named], sel.instance ?? "");
 });
 
 // §11.4: the timelapse; §11.8: "ended".

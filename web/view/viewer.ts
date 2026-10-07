@@ -35,6 +35,47 @@ export function choose(catalog: Catalog, want: Partial<Selection> = {}): Selecti
 	return undefined;
 }
 
+/** §22.1's first picker (M14): one entry, and the map surfaces its second lists, each a selection less its force. */
+export type Place = { key: string; label: string; surfaces: Omit<Selection, "force">[] };
+
+/**
+ * §22.1's pickers (M14): each world ("Gridworld <id>") with its stitched planets; then each instance by name. A tile
+ * instance lists its world's planets clipped to its tile (`instance` set, §11.5), then its own map's surfaces (its
+ * platforms); a standalone instance lists its own map's. A world's map id is `gw-…`, an instance's `i-<id>`.
+ */
+export function places(catalog: Catalog): Place[] {
+	const maps = Object.entries(catalog.maps);
+	const worlds = maps.filter(([map]) => !map.startsWith("i-"));
+	const own = new Map<string, Place>();
+	const place = (id: string, label: string) => {
+		let p = own.get(id);
+		if (!p) {
+			p = { key: `i-${id}`, label, surfaces: [] };
+			own.set(id, p);
+		}
+		return p;
+	};
+	for (const [map, info] of worlds) {
+		for (const [id, i] of Object.entries(info.instances)) {
+			const clipped = Object.keys(info.surfaces).map(surface => ({ map, surface, instance: id }));
+			place(id, i.name).surfaces.push(...clipped);
+		}
+	}
+	for (const [map, info] of maps.filter(([m]) => m.startsWith("i-"))) {
+		place(map.slice(2), info.title).surfaces.push(...Object.keys(info.surfaces).map(surface => ({ map, surface })));
+	}
+	const stitched = worlds.map(([map, info]) => ({
+		key: map, label: info.title, surfaces: Object.keys(info.surfaces).map(surface => ({ map, surface })),
+	}));
+	return [...stitched, ...[...own.values()].sort((a, b) => a.label.localeCompare(b.label))]
+		.filter(p => p.surfaces.length > 0);
+}
+
+/** The first picker's entry a selection is in: its instance's when clipped to one, else its map's. */
+export function placeOf(sel: Selection): string {
+	return sel.instance === undefined ? sel.map : `i-${sel.instance}`;
+}
+
 /** One decoded area: its RGBA at time t. A live area follows live chunks and the refresh. */
 export type Entry = {
 	a: Area;
@@ -149,7 +190,8 @@ export class Viewer {
 			}
 			this.loadTags();
 		} else {
-			const first = choose(catalog);
+			// §22.1: the first picker's first entry, a world when there is one
+			const first = choose(catalog, places(catalog)[0]?.surfaces[0]);
 			if (first) {
 				this.select(first);
 			}

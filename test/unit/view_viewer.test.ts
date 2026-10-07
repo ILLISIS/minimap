@@ -5,8 +5,9 @@ import type { LiveMover } from "../../contracts.js";
 import { at, encodeChange, encodeSnap, type Rec } from "../../shared/codec.js";
 import {
 	CATALOG, SIZE, areaKey, changeKey, chunkBlock, dayKey, indexKey, keyframeKey, moveKey, snapKey, type Area,
+	type Catalog,
 } from "../../shared/keys.js";
-import { choose } from "../../web/view/viewer.js";
+import { choose, placeOf, places } from "../../web/view/viewer.js";
 import { catalog, setup, type Open } from "./view_fakes.js";
 
 const A0: Area = { map: "i-1", surface: "nauvis", force: "player", z: 0, ax: 0, ay: 0 };
@@ -436,4 +437,64 @@ test("the live view keeps 64 events a mover (a public page, drawn 16 s behind, n
 	}
 	await settle().catch(() => {});
 	assert.equal(viewer.present.at(T).length, 1, "the first of 40 events is still held");
+});
+
+/** A world of two tiles with Nauvis and Vulcanus, tile 3's platform, and a standalone instance, in that key order. */
+function worldCatalog(): Catalog {
+	const cat = catalog([["0_0"], [], [], [], []]);
+	const surf = cat.maps["i-1"].surfaces.nauvis;
+	cat.maps = {
+		"i-9": { title: "solo", instances: { 9: { name: "solo" } }, surfaces: { nauvis: surf } },
+		"i-3": {
+			title: "gridworld_0_0", instances: { 3: { name: "gridworld_0_0" } }, surfaces: { "platform-1": surf },
+		},
+		"gw-w1": {
+			title: "Gridworld w1", tileSize: 512, surfaces: { nauvis: surf, vulcanus: surf },
+			instances: {
+				3: { name: "gridworld_0_0", bounds: [-256, -256, 256, 256] },
+				4: { name: "gridworld_1_0", bounds: [256, -256, 768, 256] },
+			},
+		},
+	};
+	return cat;
+}
+
+test("§22.1's pickers (M14): each world with its planets, then each instance by name; a tile instance's planets are " +
+	"clipped to it, then come its own surfaces", () => {
+	assert.deepEqual(places(worldCatalog()), [
+		{ key: "gw-w1", label: "Gridworld w1", surfaces: [
+			{ map: "gw-w1", surface: "nauvis" }, { map: "gw-w1", surface: "vulcanus" },
+		] },
+		{ key: "i-3", label: "gridworld_0_0", surfaces: [
+			{ map: "gw-w1", surface: "nauvis", instance: "3" }, { map: "gw-w1", surface: "vulcanus", instance: "3" },
+			{ map: "i-3", surface: "platform-1" },
+		] },
+		{ key: "i-4", label: "gridworld_1_0", surfaces: [
+			{ map: "gw-w1", surface: "nauvis", instance: "4" }, { map: "gw-w1", surface: "vulcanus", instance: "4" },
+		] },
+		{ key: "i-9", label: "solo", surfaces: [{ map: "i-9", surface: "nauvis" }] },
+	]);
+	assert.equal(placeOf({ map: "gw-w1", surface: "nauvis", force: "player", instance: "3" }), "i-3");
+	assert.equal(placeOf({ map: "i-3", surface: "platform-1", force: "player" }), "i-3");
+	assert.equal(placeOf({ map: "gw-w1", surface: "vulcanus", force: "player" }), "gw-w1");
+});
+
+test("the page opens on the first picker's first entry: the world, not the catalog's first map (§22.1)", async () => {
+	const { viewer, settle } = setup(new Map<string, unknown>([[CATALOG, worldCatalog()]]));
+	await viewer.refresh();
+	await settle();
+	assert.deepEqual(viewer.sel, { map: "gw-w1", surface: "nauvis", force: "player", instance: undefined });
+});
+
+test("a tile instance's planet stored under its own map before §22.1 is listed twice, each entry on its own map " +
+	"(Review Focus 5)", () => {
+	const cat = worldCatalog();
+	cat.maps["i-3"].surfaces.vulcanus = cat.maps["i-3"].surfaces["platform-1"];
+	const [, mine] = places(cat);
+	assert.deepEqual(mine.surfaces.filter(s => s.surface === "vulcanus"), [
+		{ map: "gw-w1", surface: "vulcanus", instance: "3" }, { map: "i-3", surface: "vulcanus" },
+	]);
+	assert.deepEqual(choose(cat, { force: "player", ...mine.surfaces[3] }), {
+		map: "i-3", surface: "vulcanus", force: "player", instance: undefined,
+	});
 });

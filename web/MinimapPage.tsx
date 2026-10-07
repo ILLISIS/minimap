@@ -3,7 +3,7 @@ import { Button, Select, Slider, Space } from "antd";
 import { PageHeader, PageLayout } from "@clusterio/web_ui";
 import { mount, type Mounted } from "./map_view.js";
 import type { Source } from "./view/source.js";
-import { choose, type Selection, type Viewer } from "./view/viewer.js";
+import { choose, placeOf, places, type Selection, type Viewer } from "./view/viewer.js";
 
 /** §22.2 (M15): the Clusterio page draws live movers 2 s behind, past their ≈ 1-s delivery (§7.3). */
 const DELAY = 2000;
@@ -13,38 +13,40 @@ function useViewer(viewer: Viewer): void {
 	useSyncExternalStore(cb => viewer.subscribe(cb), () => viewer.rev);
 }
 
-/** Map, surface, force and instance (§3). Names are React text, never HTML (REV M-13). */
+/**
+ * §22.1 (M14): the map (each world, then each instance), its surfaces, and the force when the surface has more than
+ * one. Names are React text, never HTML (REV M-13).
+ */
 function Pickers({ viewer }: { viewer: Viewer }) {
 	useViewer(viewer);
 	const { catalog, sel } = viewer;
 	if (!catalog || !sel) {
 		return null;
 	}
-	const map = catalog.maps[sel.map];
-	const pick = (want: Partial<Selection>) => {
-		const next = choose(catalog, want);
+	const list = places(catalog);
+	const here = list.find(p => p.key === placeOf(sel));
+	const pick = (want: Partial<Selection> | undefined) => {
+		const next = want && choose(catalog, { force: sel.force, ...want });
 		if (next) {
 			viewer.select(next);
 		}
 	};
-	const instances = Object.entries(map.instances).filter(([, i]) => i.bounds);
+	const surfaces = here?.surfaces ?? [];
+	const forces = Object.keys(catalog.maps[sel.map].surfaces[sel.surface].forces);
 	return <Space wrap>
 		<Select
-			style={{ minWidth: 160 }} value={sel.map} onChange={m => pick({ map: m })}
-			options={Object.entries(catalog.maps).map(([id, m]) => ({ value: id, label: m.title }))}
+			style={{ minWidth: 160 }} value={placeOf(sel)}
+			onChange={key => pick(list.find(p => p.key === key)?.surfaces[0])}
+			options={list.map(p => ({ value: p.key, label: p.label }))}
 		/>
 		<Select
-			style={{ minWidth: 120 }} value={sel.surface} onChange={s => pick({ ...sel, surface: s })}
-			options={Object.keys(map.surfaces).map(s => ({ value: s, label: s }))}
+			style={{ minWidth: 120 }} value={surfaces.findIndex(s => s.map === sel.map && s.surface === sel.surface)}
+			onChange={i => pick(surfaces[i])}
+			options={surfaces.map((s, i) => ({ value: i, label: s.surface }))}
 		/>
-		<Select
+		{forces.length > 1 && <Select
 			style={{ minWidth: 100 }} value={sel.force} onChange={f => pick({ ...sel, force: f })}
-			options={Object.keys(map.surfaces[sel.surface].forces).map(f => ({ value: f, label: f }))}
-		/>
-		{instances.length > 1 && <Select
-			style={{ minWidth: 160 }} value={sel.instance ?? ""}
-			onChange={i => pick({ ...sel, instance: i || undefined })}
-			options={[{ value: "", label: "Whole map" }, ...instances.map(([id, i]) => ({ value: id, label: i.name }))]}
+			options={forces.map(f => ({ value: f, label: f }))}
 		/>}
 	</Space>;
 }
