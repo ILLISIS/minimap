@@ -486,6 +486,20 @@ test("the page opens on the first picker's first entry: the world, not the catal
 	assert.deepEqual(viewer.sel, { map: "gw-w1", surface: "nauvis", force: "player", instance: undefined });
 });
 
+test("a refresh that drops the selected map or surface falls back to the first picker's first entry", async () => {
+	const files = new Map<string, unknown>([[CATALOG, worldCatalog()]]);
+	const { viewer, settle } = setup(files);
+	await viewer.refresh();
+	await settle();
+	viewer.select({ map: "i-3", surface: "platform-1", force: "player" });
+	const cat = worldCatalog();
+	delete cat.maps["i-3"];
+	files.set(CATALOG, cat);
+	await viewer.refresh();
+	await settle();
+	assert.deepEqual(viewer.sel, { map: "gw-w1", surface: "nauvis", force: "player", instance: undefined });
+});
+
 test("a tile instance's planet stored under its own map before §22.1 is listed twice, each entry on its own map " +
 	"(Review Focus 5)", () => {
 	const cat = worldCatalog();

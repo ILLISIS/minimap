@@ -175,14 +175,16 @@ export class Viewer {
 		}
 		this.catalog = catalog;
 		this.clock.see(catalog.updated);
-		if (this.sel) {
+		// A selection the catalog no longer has (a removed instance, a wiped store) starts over like the first load.
+		const sel = this.sel;
+		if (sel && catalog.maps[sel.map]?.surfaces[sel.surface]?.forces[sel.force]) {
 			for (const key of this.areas.keys()) {
 				this.areas.peek(key)!.stale = true;
 			}
 			this.days.clear();
 			this.failed.clear();
 			// A surface that gained or lost its live file since the live source started.
-			if (catalog.maps[this.sel.map]?.surfaces[this.sel.surface]?.live !== this.liveFlag) {
+			if (catalog.maps[sel.map]?.surfaces[sel.surface]?.live !== this.liveFlag) {
 				this.startLive();
 			}
 			for (const key of [...this.done].filter(k => k.endsWith("/recipes.json.gz"))) {
@@ -194,6 +196,11 @@ export class Viewer {
 			const first = choose(catalog, places(catalog)[0]?.surfaces[0]);
 			if (first) {
 				this.select(first);
+			} else if (this.sel) {
+				// an empty catalog: drop the selection, its live source and in-flight loads; the pickers hide
+				this.gen += 1;
+				this.sel = undefined;
+				this.startLive();
 			}
 		}
 		this.changed();
