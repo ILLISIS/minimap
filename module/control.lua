@@ -119,7 +119,10 @@ control.events[clusterio_api.events.on_server_startup] = function()
 	if storage.minimap then
 		storage.minimap.boxes = nil
 	end
-	ensure().configured = false
+	local st = ensure()
+	st.configured = false
+	-- §22.4: no step runs until the config, so the wheel's due ticks would pass unread; the scan finds the trains again
+	st.wheel, st.fast = {}, {}
 end
 control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted

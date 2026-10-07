@@ -68,7 +68,9 @@ end
 
 --- §6.3: journey j's gone, if it was ever sampled, then forget it.
 function movers.gone(st, j)
-	st.fast[j] = nil
+	if st.fast then -- nil only before ensure() migrates a schema-1 storage
+		st.fast[j] = nil
+	end
 	local m = st.movers[j]
 	if not m then
 		return
@@ -156,9 +158,13 @@ local function scan(st, t)
 	end
 	for _, tr in pairs(game.train_manager.get_trains{ is_moving = true }) do
 		local j = st.by_train[tr.id]
-		if j and st.fast[j] then
+		if j and st.fast[j] and st.fast[j] >= t then
 			seen[j] = true -- on the wheel: not walked, and not stopped
 		else
+			-- overdue: its slot came round on a tick the step skipped (unconfigured at boot), so the walk takes it back
+			if j then
+				st.fast[j] = nil
+			end
 			add(j or mint(st, tr, "t", tr.id, t))
 		end
 	end
