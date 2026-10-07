@@ -11,11 +11,14 @@ core.RESYNC_CHUNKS = 16 -- K33: the walk stops for the tick once this many chart
 -- finishes its forces, so a tick can queue up to 15 + the captured forces)
 core.WALK = 8 -- K6: movers polled a tick
 core.SCAN = 30 -- K6: ticks at least from one scan to the next
-core.EPS = 1 -- K6: tiles off the prediction, on either axis, before a sample
+core.EPS = 1 -- K6: tiles off the prediction, on either axis, before a sample (vehicles and players)
+core.TRAIN_EPS = 0.5 -- §22.2: a train's, so its drawn path stays within half a tile of its rails
 core.HEARTBEAT = 600 -- K6: ticks from a mover's sample to its next, on its prediction
 core.LIMIT = 3500 -- K34: bytes a printed line stays under
 core.MOVE_MAX = 3 -- samples an mm.move carries: ≤ 2,523 bytes with 200-byte names (plan ruling 9)
 core.SURFACES_MAX = 13 -- surfaces an mm.surfaces carries: ≤ 2,956 bytes with 200-byte names (plan ruling 9)
+core.KINDS_MAX = 200 -- §22.2: a train's carriage kinds sent: three samples of 200 kinds and 200-byte names stay
+-- under a line (plan F ruling P11)
 
 --- The tile's chunks [x1, x2) × [y1, y2) (§6.1; gridworld/world/grid.ts:14), or nil without a tile. The config check
 --- (control.config) makes size a multiple of 64, so T/2 is a whole number of chunks.
@@ -116,7 +119,8 @@ function core.poll(m, x, y, si, tick, how)
 			due = true
 		else
 			local s = (tick - m.t) / 60
-			due = math.abs(x - m.x - m.vx * s) > core.EPS or math.abs(y - m.y - m.vy * s) > core.EPS
+			local eps = m.kind == "t" and core.TRAIN_EPS or core.EPS
+			due = math.abs(x - m.x - m.vx * s) > eps or math.abs(y - m.y - m.vy * s) > eps
 		end
 	end
 	if due then
@@ -151,7 +155,8 @@ function core.take(st, j, kind, key, ref, n, register)
 	if m.key and m.key ~= key and index(st, m.kind)[m.key] == j then
 		index(st, m.kind)[m.key] = nil
 	end
-	m.ref, m.key, m.n = ref, key, n
+	-- §22.2: a train's kinds and colours are read again at its next sample (movers.lua's shape)
+	m.ref, m.key, m.n, m.o = ref, key, n, nil
 	m.reg = register(ref)
 	st.reg[m.reg] = j
 	index(st, kind)[key] = j

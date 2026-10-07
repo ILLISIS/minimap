@@ -142,6 +142,45 @@ t.case("movers: a 16-carriage train is one mover, with n = 16 (§6.3)", function
 	end)
 end)
 
+t.case("movers: a train's samples carry its carriages' kinds and its leading locomotive's colour, from its leading "
+	.. "end, both ways (§22.2)", function(ctx)
+	local K
+	local seen = {} -- tick → { speed, front_stock x, back_stock x }, as the poll at that tick read them
+	ctx.at(252, function()
+		-- east to west: L (blue, facing east) C F A l (green, facing west)
+		K = mt.train(S, 25, 1200, "LCFAl")
+		for _, c in ipairs(K.carriages) do
+			if c.type == "locomotive" then
+				c.color = c.position.x > 1190 and { r = 0, g = 0, b = 1 } or { r = 0, g = 1, b = 0 }
+			end
+		end
+	end)
+	each(ctx, 253, 420, function(k)
+		-- what this step reads at tick T is what the poll read at T (see the K30 case)
+		seen[game.tick] = { K.speed, K.front_stock.position.x, K.back_stock.position.x }
+		K.speed = k <= 340 and 0.2 or -0.2
+	end)
+	ctx.at(421, function()
+		local ways = { east = 0, west = 0 }
+		for _, x in ipairs(mt.samples(by_train(K) or "", 0, game.tick)) do
+			local p = seen[x.tick]
+			if p and not x.gone then
+				-- the leading end is front_stock while speed >= 0, else back_stock (K30)
+				local lead, other = p[2], p[3]
+				if p[1] < 0 then
+					lead, other = p[3], p[2]
+				end
+				local way = lead > other and "east" or "west"
+				local want = way == "east" and { "LCFAL", "0000ff" } or { "LAFCL", "00ff00" }
+				ctx.expect(x.o == want[1] and x.c == want[2] and x.n == 5,
+					way .. " at " .. x.tick .. ": " .. tostring(x.o) .. ", " .. tostring(x.c))
+				ways[way] = ways[way] + 1
+			end
+		end
+		ctx.expect(ways.east >= 1 and ways.west >= 1, "samples both ways: " .. ways.east .. ", " .. ways.west)
+	end)
+end)
+
 t.case("movers: at most 8 polls a tick, and the vehicles are cars and spidertrons, never rolling stock (§6.3, K6)",
 	function(ctx)
 		local cars, prev_walk, prev_wi = {}, nil, nil

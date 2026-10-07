@@ -276,3 +276,30 @@ t.test("§22.1 (M14): a tile's planets are tiled, less its exclude list; tile.su
 	t.expect_eq(core.planet({ name = "nauvis", planet = { name = "nauvis" } }), "nauvis")
 	t.expect_eq(core.planet({ name = "platform-1" }), nil)
 end)
+
+t.test("dead reckoning's ε (§22.2): half a tile for a train, a tile for a vehicle or a player", function()
+	local function moving(kind)
+		local m = { kind = kind }
+		core.poll(m, 0, 0, 1, 0)
+		core.poll(m, 3, 0, 1, 30) -- sent: 6 tiles a second along x
+		return m
+	end
+	local tr, car = moving("t"), moving("v")
+	t.expect_true(not core.poll(tr, 6 + 0.4, 0, 1, 60), "a train 0.4 tiles off: within its half tile")
+	t.expect_true(core.poll(tr, 9 + 0.6, 0, 1, 90), "a train 0.6 tiles off: sent")
+	t.expect_true(not core.poll(car, 6 + 0.6, 0, 1, 60), "a car 0.6 tiles off: within its tile")
+	t.expect_true(core.poll(car, 9 + 1.1, 0, 1, 90), "a car 1.1 tiles off: sent")
+	t.expect_eq(core.TRAIN_EPS, 0.5)
+end)
+
+t.test("§22.2: core.take clears a train's kinds, so its next sample reads them again (first sight, on_train_created, "
+	.. "adoption)", function()
+	local st, register = state(), registrar()
+	core.take(st, "x", "t", 40, { id = 40 }, 2, register)
+	st.movers.x.o = "LC"
+	core.train_created(st, 40, nil, 41, { id = 41 }, 3, register)
+	t.expect_eq(st.movers.x.o, nil, "the train changed: its kinds are read again")
+	st.movers.x.o = "LCC"
+	core.adopt(st, "x", "t", 41, { id = 41 }, 3, register)
+	t.expect_eq(st.movers.x.o, nil, "adopted: read again")
+end)

@@ -32,6 +32,10 @@ export const MoverSample = Type.Object({
 	vx: Type.Number(),
 	vy: Type.Number(),
 	n: Type.Optional(Type.Integer()),
+	/** §22.2: a train's carriages from its leading end: "L" locomotive, "F" fluid, "A" artillery, else "C". */
+	o: Type.Optional(Type.String({ pattern: "^[LCFA]{0,200}$" })),
+	/** §22.2: a train's leading locomotive's colour, "rrggbb". */
+	c: Type.Optional(Type.String({ pattern: "^[0-9a-f]{6}$" })),
 });
 export type MoverSample = Static<typeof MoverSample>;
 

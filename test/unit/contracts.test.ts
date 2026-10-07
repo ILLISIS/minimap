@@ -13,6 +13,8 @@ test("LuaMsg accepts each message Lua prints, in its absent-field forms (spec §
 		{ type: "mm.chunk", s: "nauvis", f: "player", x: -3, y: 4 },
 		{ type: "mm.move", s: "nauvis", m: [
 			{ j: "4242.600.32", k: "t", f: "player", name: "locomotive", x: 1.5, y: -2.25, vx: 18, vy: 0, n: 16 },
+			{ j: "4242.600.33", k: "t", f: "player", name: "locomotive", x: 0, y: 0, vx: 0, vy: 0, n: 3, o: "LCF",
+				c: "eb1200" },
 			{ j: "p:bob", k: "p", f: "player", name: "bob", x: 0, y: 0, vx: 0, vy: 0 },
 			{ j: "4242.600.v750", gone: true },
 		] },
@@ -38,6 +40,9 @@ test("LuaMsg refuses a fractional chunk, an unknown kind, a tag without its numb
 	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [odd] }), false);
 	assert.equal(ok({ type: "mm.tag", s: "nauvis", f: "player" }), false);
 	assert.equal(ok({ type: "mm.nope" }), false);
+	const train = { j: "a", k: "t", f: "p", name: "locomotive", x: 0, y: 0, vx: 0, vy: 0, n: 1 };
+	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...train, c: "red" }] }), false, "a colour not rrggbb");
+	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...train, o: "LX" }] }), false, "a kind not L, C, F or A");
 	assert.equal(valid(LuaBatch)({ tick: 5, msgs: [{ type: "mm.adopt", j: "a", trace: "b" }] }), true);
 });
 

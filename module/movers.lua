@@ -25,6 +25,35 @@ local function vehicles()
 	return vehicle_names
 end
 
+--- §22.2: rolling stock as the viewer draws it; any other type is a wagon ("C").
+local KINDS = { locomotive = "L", ["cargo-wagon"] = "C", ["fluid-wagon"] = "F", ["artillery-wagon"] = "A" }
+
+--- A locomotive's colour as "rrggbb": its own, else its prototype's (the game's default); nil without either.
+local function hex(e)
+	local c = e.color or e.prototype.color
+	if not c then
+		return nil
+	end
+	return string.format("%02x%02x%02x", math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5),
+		math.floor(c.b * 255 + 0.5))
+end
+
+--- §22.2: train tr's carriages' kinds from its front (at most core.KINDS_MAX), and the colours of its first locomotive
+--- from the front and from the back, into mover m. Read at m's first poll after core.take cleared m.o: at first sight,
+--- at each on_train_created and at an adoption (plan F ruling P7).
+local function shape(m, tr)
+	local kinds, first, last = {}, nil, nil
+	for i, c in ipairs(tr.carriages) do
+		if i <= core.KINDS_MAX then
+			kinds[i] = KINDS[c.type] or "C"
+		end
+		if c.type == "locomotive" then
+			first, last = first or c, c
+		end
+	end
+	m.o, m.cf, m.cb = table.concat(kinds), first and hex(first), last and hex(last)
+end
+
 --- The connected players. The game tests replace it to walk a player that has no character (C9): headless has none.
 function movers.players()
 	return game.connected_players
@@ -64,9 +93,14 @@ local function poll(st, j, t, how)
 		return false
 	end
 	local e, pos, si
+	local fwd = true -- a train runs towards its front (K30); its kinds and colour are then from the front
 	if m.kind == "t" then
-		e = r.speed >= 0 and r.front_stock or r.back_stock
+		fwd = r.speed >= 0
+		e = fwd and r.front_stock or r.back_stock
 		pos, si = e.position, e.surface_index
+		if not m.o then
+			shape(m, r)
+		end
 	elseif m.kind == "v" then
 		e, pos, si = r, r.position, r.surface_index
 	else
@@ -77,9 +111,14 @@ local function poll(st, j, t, how)
 	end
 	m.s = game.get_surface(si).name
 	local src = e or r
-	-- plan ruling 8: n rides on every train sample
+	local o, c = m.o, m.cf
+	if not fwd then
+		o, c = o:reverse(), m.cb
+	end
+	-- plan ruling 8: n rides on every train sample; §22.2: so do its kinds and its leading locomotive's colour, from
+	-- its leading end
 	tick.move(m.s, { j = j, k = m.kind, f = src.force.name, name = src.name, x = pos.x, y = pos.y, vx = m.vx,
-		vy = m.vy, n = m.n })
+		vy = m.vy, n = m.n, o = o, c = c })
 	return true
 end
 
