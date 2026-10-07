@@ -5,6 +5,9 @@ import { mount, type Mounted } from "./map_view.js";
 import type { Source } from "./view/source.js";
 import { choose, type Selection, type Viewer } from "./view/viewer.js";
 
+/** §22.2 (M15): the Clusterio page draws live movers 2 s behind, past their ≈ 1-s delivery (§7.3). */
+const DELAY = 2000;
+
 /** Re-render on the viewer's changes: the catalog, the selection, the time shown. */
 function useViewer(viewer: Viewer): void {
 	useSyncExternalStore(cb => viewer.subscribe(cb), () => viewer.rev);
@@ -86,7 +89,7 @@ export default function MinimapPage({ source }: { source: Source }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const [mounted, setMounted] = useState<Mounted>();
 	useEffect(() => {
-		const m = mount(canvas.current!, source);
+		const m = mount(canvas.current!, source, DELAY);
 		setMounted(m);
 		return m.stop;
 	}, [source]);

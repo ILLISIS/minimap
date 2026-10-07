@@ -75,7 +75,7 @@ export class Viewer {
 	readonly bytes = new Lru<Uint8Array>(Infinity, BYTES, b => b.byteLength);
 	/** History's movers, from files; the live view's, from live updates. */
 	readonly past = new Tracks();
-	readonly present = new Tracks(16);
+	readonly present = new Tracks(64);
 	readonly tags = new Versions<Tag>();
 	readonly recipes = new Versions<Recipe>();
 	/** Bumped at each switch: results of older loads and live updates are dropped (C7). */
@@ -107,6 +107,8 @@ export class Viewer {
 		readonly clock: Clock,
 		private frame: (cb: () => void) => void,
 		private draw: (v: Viewer) => void,
+		/** §22.2 (M15): live movers are drawn this long behind the data clock; terrain, tags and recipes aren't. */
+		readonly delay = 0,
 	) {}
 
 	/** Loads in flight, and live updates not yet applied. */
@@ -286,11 +288,14 @@ export class Viewer {
 			this.changed();
 		}
 		const t = this.time();
+		const live = this.at === undefined;
 		this.sync(t);
-		this.movers = (this.at === undefined ? this.present : this.past).at(t);
+		this.movers = live ? this.present.at(t - this.delay) : this.past.at(t);
 		this.draw(this);
-		// §11.8: a frame follows while playing, or live while a mover on screen still moves (K31: at most 60 s).
-		if (this.speed > 0 || (this.at === undefined && this.movers.some(m => m.moving && this.onScreen(m.x, m.y)))) {
+		// §11.8: a frame follows while playing, or live while a mover on screen still moves (K31: at most 60 s) or a
+		// mover already sampled is still ahead of the drawn time (§22.2: for at most the delay; plan F ruling P15).
+		const ahead = this.present.size > this.movers.length;
+		if (this.speed > 0 || (live && (ahead || this.movers.some(m => m.moving && this.onScreen(m.x, m.y))))) {
 			this.invalidate();
 		}
 	}

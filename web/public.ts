@@ -6,9 +6,15 @@ import { Clock } from "./view/movers.js";
 import { bucketSource } from "./view/source.js";
 import { choose, type Selection } from "./view/viewer.js";
 
+/**
+ * §22.2 (M15): the public page draws live movers 16 s behind: its delivery (the 1-s batch, the 5-s live PUT, 5 s of
+ * cache and the 5-s poll).
+ */
+const DELAY = 16_000;
+
 const $ = <T extends HTMLElement = HTMLSelectElement>(id: string) => document.getElementById(id) as T;
 const clock = new Clock();
-const { viewer } = mount($<HTMLCanvasElement>("canvas"), bucketSource(t => clock.see(t)), clock);
+const { viewer } = mount($<HTMLCanvasElement>("canvas"), bucketSource(t => clock.see(t)), DELAY, clock);
 
 /** A select's options from [value, label] pairs; hidden when there is nothing to choose. */
 function fill(select: HTMLSelectElement, options: [string, string][], value: string): void {

@@ -1,16 +1,28 @@
-// Movers at time t (spec §11.4, §11.7, K31): samples from keyframes, movement windows and live updates;
-// interpolation between a moving mover's samples, extrapolation by velocity for at most 60 s of data-clock age,
-// then hold. Times are the data's (wall-clock ms from the instances); Date.now() is never read. DOM-free.
+// Movers at time t (spec §11.4, §11.7, §22.2, K31): samples from keyframes, movement windows and live updates. A mover
+// runs on from its last sample by its velocity for at most 60 s of data-clock age, blending into its next sample over
+// the BLEND ms before it; a train is its carriages along its path. Times are the data's (wall-clock ms from the
+// instances); Date.now() is never read. DOM-free.
 import type { LiveMover } from "../../contracts.js";
 
-/** K31: extrapolate, or interpolate across a gap, for at most this long. */
+/** K31: extrapolate, or blend across a gap, for at most this long. */
 export const CAP = 60_000;
-/** Tiles per carriage, inferred (§11.7). */
+/**
+ * Plan F ruling P1 (§22.2): a mover blends into its next sample over this long before it. Lua polls a mover every 30
+ * ticks or more (K6), so the turn that made it send that sample lies in its last 500 ms; drawn 2 s behind, the
+ * Clusterio page holds that sample by then (it arrives about a second after it was taken, §7.3).
+ */
+export const BLEND = 500;
+/** Tiles from one carriage's centre to the next: Factorio's joint and connection distances, 4 + 3 (§11.7, §22.2). */
 const PITCH = 7;
 
 /** A sample, or (gone) the mover's end at t. */
 type Ev = { t: number; x: number; y: number; vx: number; vy: number; gone: boolean };
-type Track = { kind: "t" | "v" | "p"; force: string; name: string; n: number; evs: Ev[] };
+type Track = {
+	kind: "t" | "v" | "p"; force: string; name: string; n: number; kinds: string; colour: string; evs: Ev[];
+};
+
+/** One carriage (§22.2): its centre, its angle along the path in radians, and whether it is a locomotive. */
+export type Car = { x: number; y: number; a: number; loco: boolean };
 
 /** What a frame draws for one mover. */
 export type Shown = {
@@ -25,16 +37,26 @@ export type Shown = {
 	hy: number;
 	/** Its drawn position still changes as t advances. */
 	moving: boolean;
-	/** A train's line, from its leading end back n × 7 tiles (§11.7); [] for vehicles and players. */
+	/** A train's path, from its leading end back n × 7 tiles (§11.7); [] for vehicles and players. */
 	path: [number, number][];
+	/** A train's carriages along its path (§22.2); [] for vehicles and players. */
+	cars: Car[];
+	/** A train's leading locomotive's colour, "rrggbb"; "" when Lua sent none. */
+	colour: string;
 };
 
-/** A movement window (§8.7): movers [id, kind, force, name, n?]; rows [mover, dt, x, y, vx, vy], or [mover, dt]. */
+/**
+ * A movement window (§8.7): movers [id, kind, force, name], a train's with n, kinds and colour (§22.2); rows
+ * [mover, dt, x, y, vx, vy], or [mover, dt].
+ */
 export type Window = { t: number; movers: (string | number)[][]; s: number[][] };
 /** A keyframe file (Plan B's ruling 7): every live mover's last sample, as live.json's tuples. */
 export type Keyframe = { t: number; movers: LiveMover[] };
 
-/** Each mover's samples and ends, in time order. `keep` caps the events a mover holds (the live view keeps 16). */
+/**
+ * Each mover's samples and ends, in time order. `keep` caps the events a mover holds: the live view keeps 64, about
+ * 32 s of a train sampled at every poll on a curve, which covers the public page's 16-s delay (§22.2).
+ */
 export class Tracks {
 	private m = new Map<string, Track>();
 	/** Each keyframe's time and the movers it lists. */
@@ -63,8 +85,10 @@ export class Tracks {
 	window(w: Window): void {
 		for (const row of w.s) {
 			const [i, dt, x, y, vx, vy] = row;
-			const [id, kind, force, name, n] = w.movers[i] as [string, Track["kind"], string, string, number?];
-			const tr = this.track(id, kind, force, name, n ?? 0);
+			// A window written before §22.2 has no kinds or colour.
+			const [id, kind, force, name, n = 0, kinds = "", colour = ""] = w.movers[i] as
+				[string, Track["kind"], string, string, number?, string?, string?];
+			const tr = this.track(id, kind, force, name, n, kinds, colour);
 			this.add(tr, row.length === 2
 				? { t: w.t + dt, x: 0, y: 0, vx: 0, vy: 0, gone: true }
 				: { t: w.t + dt, x, y, vx, vy, gone: false });
@@ -72,18 +96,17 @@ export class Tracks {
 	}
 
 	/**
-	 * Samples as live.json and MinimapLiveEvent carry them, and the ids gone at t. The live view (a capped `keep`)
-	 * forgets a gone mover, so a page left open doesn't collect every mover it ever saw.
+	 * Samples as live.json and MinimapLiveEvent carry them, and the ids gone at t. A gone is an event at t like any
+	 * other, so a view drawn behind live (§22.2) shows the mover until then.
 	 */
 	live(t: number, movers: LiveMover[] = [], gone: string[] = []): void {
-		for (const [id, kind, force, name, n, x, y, vx, vy, ts] of movers) {
-			this.add(this.track(id, kind, force, name, n), { t: ts, x, y, vx, vy, gone: false });
+		// A keyframe written before §22.2 has no kinds or colour.
+		for (const [id, kind, force, name, n, x, y, vx, vy, ts, kinds = "", colour = ""] of movers) {
+			this.add(this.track(id, kind, force, name, n, kinds, colour), { t: ts, x, y, vx, vy, gone: false });
 		}
 		for (const id of gone) {
 			const tr = this.m.get(id);
-			if (tr && this.keep < Infinity) {
-				this.m.delete(id);
-			} else if (tr) {
+			if (tr) {
 				this.add(tr, { t, x: 0, y: 0, vx: 0, vy: 0, gone: true });
 			}
 		}
@@ -95,6 +118,12 @@ export class Tracks {
 		const listed = this.frames.get(k);
 		const out: Shown[] = [];
 		for (const [id, tr] of this.m) {
+			const end = tr.evs[tr.evs.length - 1];
+			// The live view forgets a mover once its gone is drawn: a page left open doesn't keep every mover it saw.
+			if (this.keep < Infinity && end.gone && end.t <= t) {
+				this.m.delete(id);
+				continue;
+			}
 			let i = tr.evs.length - 1;
 			while (i >= 0 && tr.evs[i].t > t) {
 				i -= 1;
@@ -106,38 +135,46 @@ export class Tracks {
 		return out;
 	}
 
+	/**
+	 * Mover tr at t, from its last sample i at or before t (plan F ruling P1): on by its velocity for at most CAP of
+	 * data time (K31), then held; over the BLEND ms before its next sample, the gap to that sample is closed, so the
+	 * drawing follows a turn and never snaps. Never towards a gone, nor across a gap over CAP.
+	 */
 	private place(id: string, tr: Track, i: number, t: number): Shown {
 		const e = tr.evs[i];
 		const next = tr.evs[i + 1];
-		const still = e.vx === 0 && e.vy === 0;
-		let x: number;
-		let y: number;
-		let moving: boolean;
-		if (next && !next.gone && !still && next.t - e.t <= CAP) {
-			const f = (t - e.t) / (next.t - e.t);
-			x = e.x + (f * (next.x - e.x));
-			y = e.y + (f * (next.y - e.y));
-			moving = next.x !== e.x || next.y !== e.y;
-		} else {
-			// K31: by velocity for at most CAP of data-clock age, then hold.
-			const dt = Math.min(t - e.t, CAP) / 1000;
-			x = e.x + (e.vx * dt);
-			y = e.y + (e.vy * dt);
-			moving = !still && t - e.t < CAP;
+		const run = (u: number): [number, number] => {
+			const s = Math.min(u - e.t, CAP) / 1000;
+			return [e.x + (e.vx * s), e.y + (e.vy * s)];
+		};
+		let [x, y] = run(t);
+		let moving = (e.vx !== 0 || e.vy !== 0) && t - e.t < CAP;
+		if (next && !next.gone && next.t - e.t <= CAP) {
+			const [px, py] = run(next.t);
+			const f = Math.max(0, 1 - ((next.t - t) / Math.min(BLEND, next.t - e.t)));
+			x += f * (next.x - px);
+			y += f * (next.y - py);
+			// A parked mover with a moving sample ahead moves too: frames go on until it does (ruling P15).
+			moving ||= next.x !== px || next.y !== py;
 		}
 		const [hx, hy] = heading(tr.evs, i);
 		const path = tr.kind === "t" ? line(tr.evs, i, x, y, hx, hy, tr.n * PITCH) : [];
-		return { id, kind: tr.kind, force: tr.force, name: tr.name, x, y, hx, hy, moving, path };
+		return {
+			id, kind: tr.kind, force: tr.force, name: tr.name, x, y, hx, hy, moving, path,
+			cars: carriages(path, tr.kind === "t" ? tr.n : 0, tr.kinds), colour: tr.colour,
+		};
 	}
 
-	private track(id: string, kind: Track["kind"], force: string, name: string, n: number): Track {
+	private track(
+		id: string, kind: Track["kind"], force: string, name: string, n: number, kinds: string, colour: string,
+	): Track {
 		let tr = this.m.get(id);
 		if (!tr) {
-			tr = { kind, force, name, n, evs: [] };
+			tr = { kind, force, name, n, kinds, colour, evs: [] };
 			this.m.set(id, tr);
 		}
-		// The latest sample names the mover: a player can change force, a train its length.
-		Object.assign(tr, { kind, force, name, n: n || tr.n });
+		// The latest sample names the mover: a player can change force, a train its length, carriages and colour.
+		Object.assign(tr, { kind, force, name, n: n || tr.n, kinds: kinds || tr.kinds, colour: colour || tr.colour });
 		return tr;
 	}
 
@@ -191,6 +228,30 @@ function line(evs: Ev[], i: number, x: number, y: number, hx: number, hy: number
 	const d = Math.hypot(px - qx, py - qy);
 	out.push([px + ((px - qx) * left / d), py + ((py - qy) * left / d)]);
 	return out;
+}
+
+/**
+ * §22.2: n carriages along `path`, carriage i centred i × 7 tiles back from its first point (the leading carriage's
+ * centre, which Lua samples, §6.3; plan F ruling P9) and turned along the path there; kinds[i] "L" is a locomotive.
+ * A path shorter than the train places the carriages it has room for.
+ */
+export function carriages(path: [number, number][], n: number, kinds: string): Car[] {
+	const cars: Car[] = [];
+	let i = 0;
+	let walked = 0;
+	for (let j = 1; j < path.length && i < n; j++) {
+		const [ax, ay] = path[j - 1];
+		const [bx, by] = path[j];
+		const len = Math.hypot(bx - ax, by - ay);
+		while (i < n && i * PITCH <= walked + len) {
+			const f = len === 0 ? 0 : ((i * PITCH) - walked) / len;
+			const [x, y] = [ax + (f * (bx - ax)), ay + (f * (by - ay))];
+			cars.push({ x, y, a: Math.atan2(ay - by, ax - bx), loco: kinds[i] === "L" });
+			i += 1;
+		}
+		walked += len;
+	}
+	return cars;
 }
 
 /**

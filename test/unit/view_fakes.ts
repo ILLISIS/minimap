@@ -63,14 +63,14 @@ export function catalog(areas: string[][], surface: Partial<Omit<SurfaceInfo, "f
 }
 
 /** A viewer on a fake source, with a frame queue and a hand-driven performance clock. */
-export function setup(files: Map<string, unknown>, open?: Open, gate?: (key: string) => Promise<void>) {
+export function setup(files: Map<string, unknown>, open?: Open, gate?: (key: string) => Promise<void>, delay = 0) {
 	const fake = fakeSource(files, open, gate);
 	const queue: (() => void)[] = [];
 	const perf = { now: 0 };
 	let draws = 0;
 	const viewer = new Viewer(fake.source, new Clock(() => perf.now), cb => queue.push(cb), () => {
 		draws += 1;
-	});
+	}, delay);
 	viewer.resize(1920, 1080);
 	/** Run the frames asked for so far; returns how many ran. */
 	const run = () => queue.splice(0).map(cb => cb()).length;

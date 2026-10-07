@@ -9,8 +9,11 @@ import { Viewer } from "./view/viewer.js";
 
 export type Mounted = { viewer: Viewer; stop(): void };
 
-/** Wire `canvas` (sized by its CSS) to a viewer of `source`; a bucket source shares the data clock (plan ruling 3). */
-export function mount(canvas: HTMLCanvasElement, source: Source, clock = new Clock()): Mounted {
+/**
+ * Wire `canvas` (sized by its CSS) to a viewer of `source`, drawing live movers `delay` ms behind (§22.2); a bucket
+ * source shares the data clock (plan ruling 3).
+ */
+export function mount(canvas: HTMLCanvasElement, source: Source, delay: number, clock = new Clock()): Mounted {
 	const ctx = canvas.getContext("2d")!;
 	let icons: Icons | undefined;
 	const viewer = new Viewer(source, clock, cb => requestAnimationFrame(cb), v => {
@@ -23,7 +26,7 @@ export function mount(canvas: HTMLCanvasElement, source: Source, clock = new Clo
 		}
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		draw(ctx, v, icons);
-	});
+	}, delay);
 	const observer = new ResizeObserver(() => viewer.resize(canvas.clientWidth, canvas.clientHeight));
 	observer.observe(canvas);
 

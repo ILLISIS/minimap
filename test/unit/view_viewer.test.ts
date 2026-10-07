@@ -392,3 +392,18 @@ test("choose passes over a map or surface whose forces are empty", () => {
 	assert.deepEqual(choose(cat), want);
 	assert.deepEqual(choose(cat, { map: "i-0" }), want);
 });
+
+test("live movers are drawn `delay` behind the data clock, and frames go on until a sampled mover shows (§22.2)",
+	async () => {
+		const files = new Map([[CATALOG, catalog([[], [], [], [], []])]]);
+		const { viewer, settle, run, perf, lives } = setup(files, undefined, undefined, 2000);
+		await viewer.refresh();
+		await settle();
+		const T = 2_000_000_000;
+		lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T, 5)] });
+		await settle().catch(() => {}); // frames go on while bob is ahead of the drawn time
+		assert.equal(viewer.movers.length, 0, "drawn at T - 2 s: bob's first sample is still ahead");
+		perf.now += 3000;
+		assert.equal(run(), 1, "a frame was asked for");
+		assert.deepEqual(viewer.movers.map(m => [m.id, m.x]), [["p:bob", 5]], "at T + 1 s: 1 s on at 5 tiles a second");
+	});
