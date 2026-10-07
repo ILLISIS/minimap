@@ -199,7 +199,10 @@ export class Movers {
 			m.j, m.k, m.f, m.name, n, m.x, m.y, m.vx, m.vy, at, m.o ?? last?.[10] ?? "", m.c ?? last?.[11] ?? "",
 		];
 		s.live.set(m.j, lm);
-		s.trail = s.trail.filter(x => x[9] >= at - TRAIL); // bounded with S3 off, where liveChanged isn't called
+		// bounded with S3 off, where liveChanged isn't called; drop from the front, not a copy per sample
+		while (s.trail.length > 0 && s.trail[0][9] < at - TRAIL) {
+			s.trail.shift();
+		}
 		s.trail.push(lm);
 		this.where.set(m.j, s);
 		s.changed = true;
