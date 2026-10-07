@@ -63,7 +63,6 @@ test("one carriage: an outline in the train's colour 0.45 tile thick, a #f9ce3e 
 	assert.ok(calls.some(c => c[0] === "fill" && c[1] === "#f9ce3e"));
 });
 
-
 test("every carriage but the first is a box 4.9 x 2.5 tiles outer", () => {
 	const { ctx, calls } = fake();
 	train(ctx, view, shown([car(0), car(-7)]));
