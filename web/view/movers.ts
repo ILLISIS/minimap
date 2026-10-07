@@ -187,7 +187,7 @@ export class Tracks {
 
 	/** Insert in time order (windows list rows in arrival order); an event at an existing time replaces it. */
 	private add(tr: Track, base: Omit<Ev, "n" | "kinds" | "colour">, n = 0, kinds = "", colour = ""): void {
-		// A window or keyframe written before §22.2 has none: the mover's previous event's stand.
+		// A window or keyframe written before §22.2 has none: the mover's latest event's stand (not the one before it in time; only history spanning the deploy shows it).
 		const last = tr.evs[tr.evs.length - 1];
 		const ev: Ev = {
 			...base, n: n || last?.n || 0, kinds: kinds || last?.kinds || "", colour: colour || last?.colour || "",
