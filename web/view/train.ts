@@ -19,11 +19,13 @@ const LENGTH = 4.9;
 const WIDTH = 2.5;
 const OUTLINE = 0.45;
 const BAR = 0.75;
-const POINT = 1.2;
+/** Where the leading carriage's sides stop and slant to its point, from its back (§22.4). */
+const SHOULDER = 2.5;
 
 /**
  * §22.4: per carriage a box outlined in the train's colour (at least 1 px), bars in that colour to the next carriage,
- * and an arrow point on the leading one (cars[0]). Never under 3 × 2 px, so a far train still shows.
+ * and an arrow point on the leading one (cars[0]), which keeps the same length. Never under 3 × 2 px, so a far train
+ * still shows.
  */
 export function train(ctx: Pen, v: Viewer, m: Shown): void {
 	const k = 1 / v.view.s;
@@ -52,11 +54,16 @@ export function train(ctx: Pen, v: Viewer, m: Shown): void {
 		const [hl, hw] = [(l - o) / 2, (w - o) / 2];
 		ctx.beginPath();
 		ctx.moveTo(-hl, -hw);
-		ctx.lineTo(hl, -hw);
 		if (i === 0) {
-			ctx.lineTo(hl + (POINT * k), 0);
+			// The point replaces the box's front part: sides run to the shoulder, then slant to the front centre.
+			const sx = -(l / 2) + (l * SHOULDER / LENGTH);
+			ctx.lineTo(sx, -hw);
+			ctx.lineTo(hl, 0);
+			ctx.lineTo(sx, hw);
+		} else {
+			ctx.lineTo(hl, -hw);
+			ctx.lineTo(hl, hw);
 		}
-		ctx.lineTo(hl, hw);
 		ctx.lineTo(-hl, hw);
 		ctx.closePath();
 		ctx.fillStyle = FILL;
