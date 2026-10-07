@@ -512,3 +512,23 @@ test("a tile instance's planet stored under its own map before §22.1 is listed 
 		map: "i-3", surface: "vulcanus", force: "player", instance: undefined,
 	});
 });
+
+test("a refresh that drops the selected tile instance from a still-listed world falls back to the first", async () => {
+	const files = new Map<string, unknown>([[CATALOG, worldCatalog()]]);
+	const { viewer, settle } = setup(files);
+	await viewer.refresh();
+	await settle();
+	viewer.select({ map: "gw-w1", surface: "vulcanus", force: "player", instance: "3" });
+	const cat = worldCatalog();
+	delete cat.maps["gw-w1"].instances[3];
+	files.set(CATALOG, cat);
+	await viewer.refresh();
+	await settle();
+	assert.deepEqual(viewer.sel, { map: "gw-w1", surface: "nauvis", force: "player", instance: undefined });
+});
+
+test("a world with instances is listed before one with none, each group in catalog order", () => {
+	const cat = worldCatalog();
+	cat.maps = { "gw-dead": { ...cat.maps["gw-w1"], title: "Gridworld dead", instances: {} }, ...cat.maps };
+	assert.deepEqual(places(cat).slice(0, 2).map(p => p.key), ["gw-w1", "gw-dead"]);
+});

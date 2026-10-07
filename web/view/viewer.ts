@@ -64,7 +64,9 @@ export function places(catalog: Catalog): Place[] {
 	for (const [map, info] of maps.filter(([m]) => m.startsWith("i-"))) {
 		place(map.slice(2), info.title).surfaces.push(...Object.keys(info.surfaces).map(surface => ({ map, surface })));
 	}
-	const stitched = worlds.map(([map, info]) => ({
+	// A world with instances is live: it comes first (stable sort keeps catalog order within each group).
+	const live = (info: { instances: object }) => Number(Object.keys(info.instances).length > 0);
+	const stitched = [...worlds].sort(([, a], [, b]) => live(b) - live(a)).map(([map, info]) => ({
 		key: map, label: info.title, surfaces: Object.keys(info.surfaces).map(surface => ({ map, surface })),
 	}));
 	return [...stitched, ...[...own.values()].sort((a, b) => a.label.localeCompare(b.label))]
@@ -177,7 +179,9 @@ export class Viewer {
 		this.clock.see(catalog.updated);
 		// A selection the catalog no longer has (a removed instance, a wiped store) starts over like the first load.
 		const sel = this.sel;
-		if (sel && catalog.maps[sel.map]?.surfaces[sel.surface]?.forces[sel.force]) {
+		const map = sel && catalog.maps[sel.map];
+		const kept = !sel?.instance || (map !== undefined && Object.hasOwn(map.instances, sel.instance));
+		if (sel && map?.surfaces[sel.surface]?.forces[sel.force] && kept) {
 			for (const key of this.areas.keys()) {
 				this.areas.peek(key)!.stale = true;
 			}

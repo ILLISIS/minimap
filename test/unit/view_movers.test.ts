@@ -139,6 +139,19 @@ test("a sample without kinds or colour keeps the last one's", () => {
 	assert.deepEqual([m.colour, m.cars.map(c => c.loco)], ["ff0000", [true, false]]);
 });
 
+test("a train is drawn with the kinds and colour of the sample drawn, not of a newer one not yet reached", () => {
+	const tracks = new Tracks();
+	const t = (ts: number, kinds: string, colour: string): LiveMover => [
+		"2.1.1", "t", "player", "locomotive", 2, 0, 0, 10, 0, ts, kinds, colour, 0,
+	];
+	tracks.live(T, [t(T, "LC", "ff0000")]);
+	tracks.live(T + 1000, [t(T + 1000, "CL", "0000ff")]);
+	const [m] = tracks.at(T + 500);
+	assert.deepEqual([m.colour, m.cars.map(c => c.loco)], ["ff0000", [true, false]]);
+	const [later] = tracks.at(T + 1000);
+	assert.deepEqual([later.colour, later.cars.map(c => c.loco)], ["0000ff", [false, true]]);
+});
+
 test("a train at rest is drawn along the heading Lua sent: its carriages behind the leading end (§22.2)", () => {
 	const tracks = new Tracks();
 	tracks.live(T, [["2.1.1", "t", "player", "locomotive", 2, 10, 10, 0, 0, T, "LC", "", 0.5]]);

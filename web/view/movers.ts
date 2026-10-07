@@ -19,9 +19,12 @@ export const BLEND = 500;
 const PITCH = 7;
 
 /** A sample, or (gone) the mover's end at t. */
-type Ev = { t: number; x: number; y: number; vx: number; vy: number; h: number; gone: boolean };
+type Ev = {
+	t: number; x: number; y: number; vx: number; vy: number; h: number; gone: boolean;
+	n: number; kinds: string; colour: string;
+};
 type Track = {
-	kind: "t" | "v" | "p"; force: string; name: string; n: number; kinds: string; colour: string; evs: Ev[];
+	kind: "t" | "v" | "p"; force: string; name: string; evs: Ev[];
 };
 
 /** One carriage (§22.2): its centre, its angle along the path in radians, and whether it is a locomotive. */
@@ -91,10 +94,10 @@ export class Tracks {
 			// A window written before §22.2 has no kinds or colour.
 			const [id, kind, force, name, n = 0, kinds = "", colour = ""] = w.movers[i] as
 				[string, Track["kind"], string, string, number?, string?, string?];
-			const tr = this.track(id, kind, force, name, n, kinds, colour);
+			const tr = this.track(id, kind, force, name);
 			this.add(tr, row.length === 2
 				? { t: w.t + dt, x: 0, y: 0, vx: 0, vy: 0, h: 0, gone: true }
-				: { t: w.t + dt, x, y, vx, vy, h, gone: false });
+				: { t: w.t + dt, x, y, vx, vy, h, gone: false }, n, kinds, colour);
 		}
 	}
 
@@ -105,7 +108,7 @@ export class Tracks {
 	live(t: number, movers: LiveMover[] = [], gone: string[] = []): void {
 		// A keyframe written before §22.2 has no kinds or colour.
 		for (const [id, kind, force, name, n, x, y, vx, vy, ts, kinds = "", colour = "", h = 0] of movers) {
-			this.add(this.track(id, kind, force, name, n, kinds, colour), { t: ts, x, y, vx, vy, h, gone: false });
+			this.add(this.track(id, kind, force, name), { t: ts, x, y, vx, vy, h, gone: false }, n, kinds, colour);
 		}
 		for (const id of gone) {
 			const tr = this.m.get(id);
@@ -163,28 +166,32 @@ export class Tracks {
 		// A gone ahead is an event to draw: frames go on until it is (ruling P10; a parked mover has no other reason).
 		moving ||= next !== undefined && next.gone;
 		const [hx, hy] = heading(tr.evs, i, tr.kind === "t");
-		const path = tr.kind === "t" ? line(tr.evs, i, x, y, hx, hy, tr.n * PITCH) : [];
+		const path = tr.kind === "t" ? line(tr.evs, i, x, y, hx, hy, e.n * PITCH) : [];
 		return {
 			id, kind: tr.kind, force: tr.force, name: tr.name, x, y, hx, hy, moving, path,
-			cars: carriages(path, tr.kind === "t" ? tr.n : 0, tr.kinds), colour: tr.colour,
+			cars: carriages(path, tr.kind === "t" ? e.n : 0, e.kinds), colour: e.colour,
 		};
 	}
 
-	private track(
-		id: string, kind: Track["kind"], force: string, name: string, n: number, kinds: string, colour: string,
-	): Track {
+	private track(id: string, kind: Track["kind"], force: string, name: string): Track {
 		let tr = this.m.get(id);
 		if (!tr) {
-			tr = { kind, force, name, n, kinds, colour, evs: [] };
+			tr = { kind, force, name, evs: [] };
 			this.m.set(id, tr);
 		}
-		// The latest sample names the mover: a player can change force, a train its length, carriages and colour.
-		Object.assign(tr, { kind, force, name, n: n || tr.n, kinds: kinds || tr.kinds, colour: colour || tr.colour });
+		// The latest sample names the mover: a player can change force. A train's length, carriages and colour ride on
+		// each event (add), so the drawn time shows the ones it had then.
+		Object.assign(tr, { kind, force, name });
 		return tr;
 	}
 
 	/** Insert in time order (windows list rows in arrival order); an event at an existing time replaces it. */
-	private add(tr: Track, ev: Ev): void {
+	private add(tr: Track, base: Omit<Ev, "n" | "kinds" | "colour">, n = 0, kinds = "", colour = ""): void {
+		// A window or keyframe written before §22.2 has none: the mover's previous event's stand.
+		const last = tr.evs[tr.evs.length - 1];
+		const ev: Ev = {
+			...base, n: n || last?.n || 0, kinds: kinds || last?.kinds || "", colour: colour || last?.colour || "",
+		};
 		let i = tr.evs.length;
 		while (i > 0 && tr.evs[i - 1].t > ev.t) {
 			i -= 1;
