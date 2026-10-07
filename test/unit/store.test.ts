@@ -343,3 +343,14 @@ test("§22.1: a surface made mid-game is tiled without starting a resync; a late
 		]);
 		assert.deepEqual(later.map(u => u.map), ["i-3"], "no longer tiled: the instance's own");
 	});
+
+test("§22.1: mm.surfaces parts merge: a second part not repeating the first's surfaces leaves them tiled (ruling P4)",
+	async () => {
+		const { store } = await setup([tile(3, 0)]);
+		await store.ingest(3, [
+			{ type: "mm.surfaces", list: [{ name: "vulcanus", tile: true }], t: T },
+			{ type: "mm.surfaces", list: [{ name: "gleba", tile: true }], t: T + 1 },
+		]);
+		const updates = await store.ingest(3, [chunk(T + 2, 0, 5, "vulcanus"), chunk(T + 3, 0, 6, "gleba")]);
+		assert.deepEqual(updates.map(u => u.map), ["gw-w1", "gw-w1"]);
+	});

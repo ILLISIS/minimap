@@ -86,3 +86,11 @@ test("a restarted store keeps the open versions: the resync's repeats add nothin
 	const versions = (await disk.json<unknown[][]>(TAGS))!.map(v => [v[3], v[4], v[8]]);
 	assert.deepEqual(versions, [[1000, 6000, "a"], [6000, null, "z"]]);
 });
+
+test("a tag re-sent with the same state but on another map is a new version there (§22.1)", async () => {
+	const o = new Overlays(new Disk(await tempDir("overlays")));
+	const { out, updates } = gather();
+	o.tag(1, "i-1", 1000, tag(7, "a"), out);
+	o.tag(1, "gw-w1", 2000, tag(7, "a"), out);
+	assert.equal(updates.get("gw-w1|nauvis")?.tags?.length, 1, "opened on the world's map");
+});

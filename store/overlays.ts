@@ -102,7 +102,7 @@ export class Overlays {
 	): void {
 		this.seen.get(instance)?.add(id);
 		const cur = this.open.get(id);
-		if (cur && state?.every((x, i) => x === cur.v[5 + i])) {
+		if (cur && cur.map === map && state?.every((x, i) => x === cur.v[5 + i])) {
 			return;
 		}
 		if (cur) {

@@ -184,8 +184,18 @@ test("the live file carries every sample of the last 16 s and each mover's last;
 	movers.move(1, "i-1", "nauvis", D + 20_000, [train("a", 3)], out);
 	const [first] = movers.liveChanged(D + 20_000);
 	assert.deepEqual(first.movers.map(m => [m[0], m[5]]), [["a", 3], ["p:bob", 5]], "a's older samples are past 16 s");
-	movers.move(1, "i-1", "nauvis", D + 21_000, [train("a", 4)], out);
+	movers.move(1, "i-1", "nauvis", D + 21_000, [train("a", 4), player("bob", 6)], out);
 	movers.move(1, "i-1", "nauvis", D + 22_000, [gone("p:bob")], out);
 	const [next] = movers.liveChanged(D + 22_000);
 	assert.deepEqual(next.movers.map(m => [m[0], m[5]]), [["a", 3], ["a", 4]], "both of a's, in order; bob is gone");
+});
+
+test("the trail is trimmed as samples come, not only when the live file is built (S3 off)", async () => {
+	const { movers } = await setup();
+	const { out } = gather();
+	for (let i = 0; i < 100; i++) {
+		movers.move(1, "i-1", "nauvis", D + i * 1000, [train("a", i)], out);
+	}
+	const trail = [...movers["surfs"].values()][0].trail;
+	assert.equal(trail.length, 17, "the samples of the last 16 s, 99 s down to 83 s");
 });
