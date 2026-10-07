@@ -498,3 +498,34 @@ t.case("crossing (UE): a rejected crossing keeps the source's journey and sends 
 		ctx.expect(#mt.msgs("mm.adopt", 0, game.tick, function(m) return m.j == j end) == 0, "no mm.adopt")
 	end)
 end)
+
+t.case("movers: a train at speed is read again every core.next_read ticks, so its polls stay within core.STEP tiles and a tick apart; a "
+	.. "stopped one leaves the wheel with one zero-velocity sample (plan G Task 1)", function(ctx)
+	local G, j, at
+	local polls = {} -- the tick and x of each poll, as the movers' pt and px show it
+	ctx.at(2910, function()
+		G = mt.train(S, 1, 1000, "L")
+	end)
+	each(ctx, 2911, 2979, function(k)
+		G.speed = 1
+		j = j or by_train(G)
+		local m = storage.minimap.movers[j or ""]
+		if k >= 2940 and m and m.pt and m.pt ~= (polls[#polls] or {}).t then
+			polls[#polls + 1] = { t = m.pt, x = m.px }
+		end
+	end)
+	ctx.at(2980, function()
+		ctx.expect(j ~= nil and (storage.minimap.fast or {})[j] ~= nil, "on the wheel while it runs")
+		ctx.expect(#polls >= 8, "polled often, got " .. #polls .. " polls in 40 ticks")
+		for i = 2, #polls do
+			ctx.expect(polls[i].x - polls[i - 1].x <= core.STEP + 1, "polls " .. (polls[i].x - polls[i - 1].x) .. " tiles apart at " .. polls[i].t)
+		end
+		G.speed = 0
+		at = game.tick
+	end)
+	ctx.at(2995, function()
+		ctx.expect((storage.minimap.fast or {})[j or ""] == nil, "off the wheel once stopped")
+		local stop = mt.samples(j or "", at, game.tick)
+		ctx.expect(#stop == 1 and stop[1].vx == 0 and stop[1].vy == 0, "one zero-velocity sample, got " .. #stop)
+	end)
+end)

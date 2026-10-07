@@ -68,6 +68,7 @@ end
 
 --- §6.3: journey j's gone, if it was ever sampled, then forget it.
 function movers.gone(st, j)
+	st.fast[j] = nil
 	local m = st.movers[j]
 	if not m then
 		return
@@ -101,6 +102,19 @@ local function poll(st, j, t, how)
 		pos, si = e.position, e.surface_index
 		if not m.o then
 			shape(m, r)
+		end
+		-- plan G: a moving train is read again when it has gone core.STEP tiles; at rest it leaves the wheel, with a
+		-- sample at zero velocity
+		if r.speed ~= 0 then
+			local due = t + core.next_read(r.speed)
+			st.fast[j] = due
+			local slot = due % core.WHEEL
+			local list = st.wheel[slot] or {}
+			st.wheel[slot] = list
+			list[#list + 1] = j
+		elseif st.fast[j] then
+			st.fast[j] = nil
+			how = how or "stop"
 		end
 	elseif m.kind == "v" then
 		e, pos, si = r, r.position, r.surface_index
@@ -141,7 +155,12 @@ local function scan(st, t)
 		end
 	end
 	for _, tr in pairs(game.train_manager.get_trains{ is_moving = true }) do
-		add(st.by_train[tr.id] or mint(st, tr, "t", tr.id, t))
+		local j = st.by_train[tr.id]
+		if j and st.fast[j] then
+			seen[j] = true -- on the wheel: not walked, and not stopped
+		else
+			add(j or mint(st, tr, "t", tr.id, t))
+		end
 	end
 	for _, v in pairs(game.get_vehicles{ is_moving = true, type = vehicles() }) do
 		add(st.by_unit[v.unit_number] or mint(st, v, "v", v.unit_number, t))
@@ -162,6 +181,26 @@ end
 
 --- §6.10 step 5: poll up to core.WALK movers; with the walk done and core.SCAN ticks passed, scan instead.
 function movers.step(st, t)
+	local slot = t % core.WHEEL
+	local list = st.wheel[slot]
+	if list then
+		st.wheel[slot] = nil
+		local reads = 0
+		for _, j in ipairs(list) do
+			if st.fast[j] == t then -- else stale: j was read since, or has stopped or gone
+				if reads < core.FAST then
+					reads = reads + 1
+					poll(st, j, t)
+				else
+					-- ponytail: later trains wait a tick; spread by speed if a crowd of fast trains ever shows
+					st.fast[j] = t + 1
+					local nxt = st.wheel[(t + 1) % core.WHEEL] or {}
+					st.wheel[(t + 1) % core.WHEEL] = nxt
+					nxt[#nxt + 1] = j
+				end
+			end
+		end
+	end
 	if st.wi > #st.walk then
 		if t >= st.next_scan then
 			scan(st, t)
@@ -174,7 +213,9 @@ function movers.step(st, t)
 			return
 		end
 		st.wi = st.wi + 1
-		poll(st, j, t)
+		if not st.fast[j] then
+			poll(st, j, t)
+		end
 	end
 end
 

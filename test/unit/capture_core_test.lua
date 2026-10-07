@@ -240,22 +240,22 @@ t.test("the cut (K34): a part that fills a line exactly to 3,499 bytes is kept; 
 		t.expect_eq(parts_of(lines, 4294967295), "a,b")
 	end)
 
-t.test("migrations (§6.8): a new table becomes schema 1; schema 1 is left as it is; a newer schema is refused", function()
+t.test("migrations (§6.8): a new table becomes schema 2; schema 2 is left as it is; a newer schema is refused", function()
 	local s = core.migrate({})
-	t.expect_eq(s.schema, 1)
+	t.expect_eq(s.schema, 2)
 	t.expect_true(s.configured == false and s.seeded == false and s.drops == 0 and s.wi == 1 and s.next_scan == 0,
 		"flags and counters")
 	t.expect_same(s.queue, { head = 1, tail = 0 })
 	t.expect_same(s.machines, { head = 1, tail = 0 })
-	for _, k in ipairs({ "forces", "pending", "movers", "by_train", "by_unit", "walk", "reg" }) do
+	for _, k in ipairs({ "forces", "pending", "movers", "by_train", "by_unit", "walk", "reg", "wheel", "fast" }) do
 		t.expect_same(s[k], {}, k)
 	end
 	s.marker = "kept"
 	core.push(s.queue, "item")
 	core.migrate(s)
-	t.expect_true(s.marker == "kept" and core.size(s.queue) == 1, "schema 1 is never wiped")
-	local newer = { schema = 2, marker = "untouched" }
-	t.expect_error(function() core.migrate(newer) end, "schema 2 is newer")
+	t.expect_true(s.marker == "kept" and core.size(s.queue) == 1, "schema 2 is never wiped")
+	local newer = { schema = 3, marker = "untouched" }
+	t.expect_error(function() core.migrate(newer) end, "schema 3 is newer")
 	t.expect_eq(newer.marker, "untouched")
 end)
 
@@ -322,4 +322,20 @@ t.test("§22.2: a train's heading is an orientation from its second carriage tow
 	t.expect_eq(core.heading(0, 0, nil, nil, 0.25, false), 0.25, "one carriage leading with its front: its orientation")
 	t.expect_eq(core.heading(0, 0, nil, nil, 0.25, true), 0.75, "leading with its back: half a turn on")
 	t.expect_eq(core.heading(0, 0, nil, nil, 0.9996, false), 0, "rounded, then wrapped: never 1")
+end)
+
+t.test("migration 2 (plan G): a schema-1 table gains the wheel and fast, and keeps the rest", function()
+	local s = { schema = 1, marker = "kept", movers = { a = 1 } }
+	core.migrate(s)
+	t.expect_same({ s.schema, s.marker, s.movers.a }, { 2, "kept", 1 })
+	t.expect_same(s.wheel, {})
+	t.expect_same(s.fast, {})
+end)
+
+t.test("plan G: next_read is the ticks a train takes to move core.STEP tiles, between 1 and core.SCAN", function()
+	t.expect_eq(core.next_read(1.2), 4)
+	t.expect_eq(core.next_read(0.05), 30)
+	t.expect_eq(core.next_read(-1), 4)
+	t.expect_eq(core.next_read(4), 1)
+	t.expect_eq(core.next_read(0.001), 30, "a crawl is read at the scan's pace")
 end)

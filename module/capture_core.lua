@@ -13,6 +13,9 @@ core.WALK = 8 -- K6: movers polled a tick
 core.SCAN = 30 -- K6: ticks at least from one scan to the next
 core.EPS = 1 -- K6: tiles off the prediction, on either axis, before a sample (vehicles and players)
 core.TRAIN_EPS = 0.5 -- §22.2: a train's, so its drawn path stays within half a tile of its rails
+core.STEP = 4 -- plan G: tiles a moving train goes between reads
+core.WHEEL = 32 -- plan G: slots of the wheel of due reads; more than core.SCAN, so a slot is never two laps ahead
+core.FAST = 32 -- plan G: train reads a tick at most
 core.HEARTBEAT = 600 -- K6: ticks from a mover's sample to its next, on its prediction
 core.LIMIT = 3500 -- K34: bytes a printed line stays under
 core.MOVE_MAX = 3 -- samples an mm.move carries: ≤ 2,523 bytes with 200-byte names (plan ruling 9)
@@ -109,6 +112,11 @@ function core.forward(prev, speed)
 		return speed > 0
 	end
 	return prev ~= false
+end
+
+--- Plan G: ticks until a train at `speed` (tiles a tick, ≠ 0) is read again: core.STEP tiles on, within [1, core.SCAN].
+function core.next_read(speed)
+	return math.min(core.SCAN, math.max(1, math.ceil(core.STEP / math.abs(speed))))
 end
 
 local function round3(v)
@@ -268,6 +276,10 @@ core.MIGRATIONS = {
 		s.movers, s.by_train, s.by_unit = {}, {}, {}
 		s.walk, s.wi, s.next_scan = {}, 1, 0
 		s.reg, s.drops = {}, 0
+	end,
+	--- 2: plan G's wheel: slot (0..core.WHEEL - 1) → journeys due then; fast: journey → the tick it is due.
+	function(s)
+		s.wheel, s.fast = {}, {}
 	end,
 }
 
