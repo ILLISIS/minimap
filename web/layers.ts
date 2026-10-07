@@ -2,7 +2,7 @@
 // recipes and movers, clipped to one instance's bounds when one is selected. Game text (tag text, names) reaches the
 // page only through fillText and strokeText (REV M-13).
 import { SIZE, type Quad } from "../shared/keys.js";
-import type { Shown } from "./view/movers.js";
+import { train } from "./view/train.js";
 import { iconIndex, type Icon, type IconMetadata } from "./view/overlays.js";
 import type { Entry, Viewer } from "./view/viewer.js";
 
@@ -14,9 +14,6 @@ const TAGS = 2;
 const RECIPES = 3 / 8;
 const NAMES = 1;
 const COLOURS = { v: "#50c8ff", p: "#ffffff" };
-/** §22.2: a locomotive Lua sent no colour for: base's (data/base/prototypes/entity/trains.lua:607); other carriages. */
-const LOCO = "#eb1200";
-const WAGON = "#a0a0a0";
 
 /** The export's spritesheet and metadata.json; undefined without them, and text is drawn instead (§11.7). */
 export async function loadIcons(png: string, json: string): Promise<Icons | undefined> {
@@ -169,22 +166,5 @@ function movers(ctx: CanvasRenderingContext2D, v: Viewer): void {
 			ctx.lineWidth = 3;
 			label(ctx, m.name, sx + 8, sy);
 		}
-	}
-}
-
-/**
- * §22.2: a train as the in-game map draws it: a 6 × 2-tile rectangle per carriage, turned along its path, never under
- * 3 × 2 px so a far train still shows; locomotives in the leading one's colour, other carriages in WAGON.
- */
-function train(ctx: CanvasRenderingContext2D, v: Viewer, m: Shown): void {
-	const [l, w] = [Math.max(6 / v.view.s, 3), Math.max(2 / v.view.s, 2)];
-	const loco = m.colour === "" ? LOCO : `#${m.colour}`;
-	for (const c of m.cars) {
-		ctx.save();
-		ctx.translate(...screen(v, c.x, c.y));
-		ctx.rotate(c.a);
-		ctx.fillStyle = c.loco ? loco : WAGON;
-		ctx.fillRect(-l / 2, -w / 2, l, w);
-		ctx.restore();
 	}
 }
