@@ -95,7 +95,8 @@ local function poll(st, j, t, how)
 	local e, pos, si
 	local fwd = true -- a train runs towards its front (K30); its kinds and colour are then from the front
 	if m.kind == "t" then
-		fwd = r.speed >= 0
+		fwd = core.forward(m.fwd, r.speed)
+		m.fwd = fwd
 		e = fwd and r.front_stock or r.back_stock
 		pos, si = e.position, e.surface_index
 		if not m.o then
@@ -111,14 +112,21 @@ local function poll(st, j, t, how)
 	end
 	m.s = game.get_surface(si).name
 	local src = e or r
-	local o, c = m.o, m.cf
+	local o, c, h = m.o, m.cf, nil
 	if not fwd then
 		o, c = o:reverse(), m.cb
+	end
+	if m.kind == "t" then
+		-- §22.2: its leading end's heading, for a train drawn at rest; carriages run front to back
+		local cars = r.carriages
+		local second = cars[fwd and 2 or #cars - 1]
+		local sp = second and second.position
+		h = core.heading(pos.x, pos.y, sp and sp.x, sp and sp.y, e.orientation, not fwd)
 	end
 	-- plan ruling 8: n rides on every train sample; §22.2: so do its kinds and its leading locomotive's colour, from
 	-- its leading end
 	tick.move(m.s, { j = j, k = m.kind, f = src.force.name, name = src.name, x = pos.x, y = pos.y, vx = m.vx,
-		vy = m.vy, n = m.n, o = o, c = c })
+		vy = m.vy, n = m.n, o = o, c = c, h = h })
 	return true
 end
 

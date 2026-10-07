@@ -102,6 +102,29 @@ function core.pop(q)
 	return item
 end
 
+--- K30: whether a train leads with its front. It runs towards its front while speed > 0, its back while < 0, and keeps
+--- the end it last led with (`prev`, nil before any) while stopped; the front to begin with.
+function core.forward(prev, speed)
+	if speed ~= 0 then
+		return speed > 0
+	end
+	return prev ~= false
+end
+
+local function round3(v)
+	return (math.floor(v * 1000 + 0.5) / 1000) % 1
+end
+
+--- §22.2: a train's leading end's heading as a Factorio orientation (0 north, 0.25 east, 3 decimals): from its second
+--- carriage's position (sx, sy) towards the leading one's (x, y); with no second carriage (a one-carriage train), the
+--- carriage's own `orientation`, half a turn on when it leads with its back (`back`).
+function core.heading(x, y, sx, sy, orientation, back)
+	if sx then
+		return round3(math.atan2(x - sx, sy - y) / (2 * math.pi))
+	end
+	return round3(orientation + (back and 0.5 or 0))
+end
+
 --- One poll of mover m at (x, y) on surface index si (§6.3, K6). Returns true when a sample is due; m.x, m.y, m.vx, m.vy,
 --- m.t and m.si then hold it. The velocity is the finite difference since the last poll, in tiles a second, and 0 across
 --- a surface change. A first poll only records, so a first sample carries a measured velocity (plan ruling 7). how:

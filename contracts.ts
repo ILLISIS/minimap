@@ -36,6 +36,8 @@ export const MoverSample = Type.Object({
 	o: Type.Optional(Type.String({ pattern: "^[LCFA]{0,200}$" })),
 	/** §22.2: a train's leading locomotive's colour, "rrggbb". */
 	c: Type.Optional(Type.String({ pattern: "^[0-9a-f]{6}$" })),
+	/** §22.2: a train's leading end's heading as a Factorio orientation (0 north, 0.25 east), for one at rest. */
+	h: Type.Optional(Type.Number()),
 });
 export type MoverSample = Static<typeof MoverSample>;
 
@@ -153,11 +155,11 @@ export const Recipe = Type.Tuple([
 export type Recipe = Static<typeof Recipe>;
 
 /**
- * §10.6, §22.2: [id, kind, force, name, n, x, y, vx, vy, ts, kinds, colour]; n = 0, and kinds and colour "", when not
- * a train or not known (plan F ruling P8).
+ * §10.6, §22.2: [id, kind, force, name, n, x, y, vx, vy, ts, kinds, colour, h]; n = 0, kinds and colour "", and h 0,
+ * when not a train or not known (plan F ruling P8); h is a train's heading as a Factorio orientation.
  */
 export const LiveMover = Type.Tuple([
 	Type.String(), Kind, Type.String(), Type.String(), Type.Integer(), Type.Number(), Type.Number(), Type.Number(),
-	Type.Number(), Type.Number(), Type.String(), Type.String(),
+	Type.Number(), Type.Number(), Type.String(), Type.String(), Type.Number(),
 ]);
 export type LiveMover = Static<typeof LiveMover>;

@@ -5,7 +5,7 @@ import { BLEND, CAP, Clock, Tracks, carriages } from "../../web/view/movers.js";
 
 const T = 1_759_600_000_000;
 const car = (x: number, vx: number, ts: number, id = "1.5.v7"): LiveMover => [
-	id, "v", "player", "car", 0, x, 0, vx, 0, ts, "", "",
+	id, "v", "player", "car", 0, x, 0, vx, 0, ts, "", "", 0,
 ];
 const where = (tracks: Tracks, t: number) => tracks.at(t).map(m => [m.id, Math.round(m.x * 100) / 100, m.moving]);
 
@@ -90,7 +90,7 @@ test("a window's rows are put in time order, and [mover, dt] alone is a gone (§
 		movers: [["2.1.1", "t", "player", "locomotive", 2, "LC", "00ff00"], ["p:bob", "p", "player", "bob"]],
 		s: [[0, 2000, 20, 0, 10, 0], [1, 0, 5, 5, 0, 0], [0, 0, 0, 0, 10, 0], [1, 1500]],
 	});
-	assert.deepEqual(where(tracks, T + 1000), [["2.1.1", 10, true], ["p:bob", 5, false]]);
+	assert.deepEqual(where(tracks, T + 1000), [["2.1.1", 10, true], ["p:bob", 5, true]]);
 	assert.deepEqual(where(tracks, T + 1500), [["2.1.1", 15, true]]);
 	const [train] = tracks.at(T + 1500);
 	assert.deepEqual([train.colour, train.cars.map(c => c.loco)], ["00ff00", [true, false]], "its kinds and colour");
@@ -99,7 +99,7 @@ test("a window's rows are put in time order, and [mover, dt] alone is a gone (§
 test("a train is a line n × 7 tiles back along its samples, then on in the direction of the last step (§11.7)", () => {
 	const tracks = new Tracks();
 	const train = (x: number, y: number, vx: number, vy: number, ts: number): LiveMover => [
-		"2.1.1", "t", "player", "locomotive", 3, x, y, vx, vy, ts, "LCL", "0000ff",
+		"2.1.1", "t", "player", "locomotive", 3, x, y, vx, vy, ts, "LCL", "0000ff", 0,
 	];
 	tracks.live(T, [train(0, 0, 10, 0, T)]);
 	tracks.live(T + 1000, [train(10, 0, 0, 10, T + 1000)]);
@@ -110,7 +110,7 @@ test("a train is a line n × 7 tiles back along its samples, then on in the dire
 	assert.deepEqual(m.cars.map(c => [c.x, c.y, c.loco]), [[10, 5, true], [8, 0, false], [1, 0, true]],
 		"its carriages every 7 tiles along that line (§22.2)");
 	assert.equal(m.colour, "0000ff");
-	tracks.live(T + 1500, [["2.1.9", "t", "player", "locomotive", 0, 1, 1, 0, 0, T + 1500, "", ""]]);
+	tracks.live(T + 1500, [["2.1.9", "t", "player", "locomotive", 0, 1, 1, 0, 0, T + 1500, "", "", 0]]);
 	const odd = tracks.at(T + 1500).find(s => s.id === "2.1.9")!;
 	assert.ok(odd.path.flat().every(Number.isFinite), "no carriages: no NaN");
 	assert.deepEqual(odd.cars, []);
@@ -126,6 +126,28 @@ test("carriages (§22.2): centred every 7 tiles back from the leading end, each 
 	], "the third past the bend, turned with it; a kind past the string's end is a wagon");
 	assert.equal(carriages([[0, 0], [-10, 0]], 3, "LLL").length, 2, "a path shorter than the train: what fits");
 	assert.deepEqual(carriages([[0, 0], [-7, 0]], 0, ""), [], "no carriages");
+});
+
+test("a sample without kinds or colour keeps the last one's", () => {
+	const tracks = new Tracks();
+	const t = (ts: number, kinds: string, colour: string): LiveMover => [
+		"2.1.1", "t", "player", "locomotive", 2, 0, 0, 10, 0, ts, kinds, colour, 0,
+	];
+	tracks.live(T, [t(T, "LC", "ff0000")]);
+	tracks.live(T + 1000, [t(T + 1000, "", "")]);
+	const [m] = tracks.at(T + 1000);
+	assert.deepEqual([m.colour, m.cars.map(c => c.loco)], ["ff0000", [true, false]]);
+});
+
+test("a train at rest is drawn along the heading Lua sent: its carriages behind the leading end (§22.2)", () => {
+	const tracks = new Tracks();
+	tracks.live(T, [["2.1.1", "t", "player", "locomotive", 2, 10, 10, 0, 0, T, "LC", "", 0.5]]);
+	const [m] = tracks.at(T);
+	assert.deepEqual([Math.round(m.hx), m.hy], [0, 1], "h = 0.5 is south");
+	assert.deepEqual(m.cars.map(c => [c.x, c.y]), [[10, 10], [10, 3]], "7 tiles north of the leader");
+	const w = new Tracks();
+	w.window({ t: T, movers: [["2.1.1", "t", "player", "locomotive", 2, "LC", ""]], s: [[0, 0, 10, 10, 0, 0, 0.25]] });
+	assert.deepEqual(w.at(T)[0].cars.map(c => [c.x, c.y]), [[10, 10], [3, 10]], "a window row's h: east, cars west");
 });
 
 test("the live view keeps 64 events a mover", () => {
@@ -193,7 +215,7 @@ test("a mover turning a corner, drawn 2 s behind live, stays within ε of its tr
 			if (!last || s - last.s >= 10 || Math.abs(x - last.x - (last.vx * (s - last.s))) > 1
 				|| Math.abs(y - last.y - (last.vy * (s - last.s))) > 1) {
 				last = { x, y, vx, vy, s };
-				samples.push(["1.5.v7", "v", "player", "car", 0, x, y, vx, vy, T + (s * 1000), "", ""]);
+				samples.push(["1.5.v7", "v", "player", "car", 0, x, y, vx, vy, T + (s * 1000), "", "", 0]);
 			}
 		}
 		prev = [x, y, s];

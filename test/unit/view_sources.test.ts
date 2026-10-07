@@ -64,8 +64,8 @@ test("the bucket's live file is polled every live_ms while the catalog lists it 
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const calls: Call[] = [];
 	const key = liveKey("i-1", "nauvis");
-	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 1, 2, 0, 0, 1000, "", ""];
-	const amy: LiveMover = ["p:amy", "p", "player", "amy", 0, 3, 4, 0, 0, 1500, "", ""];
+	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 1, 2, 0, 0, 1000, "", "", 0];
+	const amy: LiveMover = ["p:amy", "p", "player", "amy", 0, 3, 4, 0, 0, 1500, "", "", 0];
 	const answers = new Map<string, [number, unknown?]>([[key, [200, { t: 2000, movers: [bob, amy] }]]]);
 	const source = bucketSource(() => {}, fakeFetch(answers, calls));
 	const seen: Live[] = [];

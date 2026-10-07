@@ -303,3 +303,23 @@ t.test("§22.2: core.take clears a train's kinds, so its next sample reads them 
 	core.adopt(st, "x", "t", 41, { id = 41 }, 3, register)
 	t.expect_eq(st.movers.x.o, nil, "adopted: read again")
 end)
+
+t.test("K30: a train keeps the end it last led with while stopped, and starts on its front", function()
+	t.expect_true(core.forward(nil, 0), "never moved: the front")
+	t.expect_true(core.forward(nil, 0.3))
+	t.expect_true(not core.forward(nil, -0.3))
+	t.expect_true(not core.forward(false, 0), "stopped after backing: still the back")
+	t.expect_true(core.forward(true, 0), "stopped after going forward: still the front")
+end)
+
+t.test("§22.2: a train's heading is an orientation from its second carriage towards the leading one, or its own "
+	.. "orientation (plus a half turn from the back) with one carriage", function()
+	t.expect_eq(core.heading(10, 0, 3, 0), 0.25, "east")
+	t.expect_eq(core.heading(0, 10, 0, 3), 0.5, "south")
+	t.expect_eq(core.heading(0, 0, 7, 0), 0.75, "west")
+	t.expect_eq(core.heading(0, 0, 0, 7), 0, "north")
+	t.expect_eq(core.heading(1, 1, 0, 2), 0.125, "north-east, 3 decimals")
+	t.expect_eq(core.heading(0, 0, nil, nil, 0.25, false), 0.25, "one carriage leading with its front: its orientation")
+	t.expect_eq(core.heading(0, 0, nil, nil, 0.25, true), 0.75, "leading with its back: half a turn on")
+	t.expect_eq(core.heading(0, 0, nil, nil, 0.9996, false), 0, "rounded, then wrapped: never 1")
+end)

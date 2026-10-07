@@ -10,13 +10,16 @@ export const CAP = 60_000;
  * Plan F ruling P1 (§22.2): a mover blends into its next sample over this long before it. Lua polls a mover every 30
  * ticks or more (K6), so the turn that made it send that sample lies in its last 500 ms; drawn 2 s behind, the
  * Clusterio page holds that sample by then (it arrives about a second after it was taken, §7.3).
+ * ponytail: holds while the mover walk takes ≤ 30 ticks (core.WALK = 8 movers a tick: ≤ 240 moving movers an instance);
+ * past that a turn can lie further back than BLEND and the drawing runs straight past it for a moment. Upgrade: blend
+ * over the walk's length.
  */
 export const BLEND = 500;
 /** Tiles from one carriage's centre to the next: Factorio's joint and connection distances, 4 + 3 (§11.7, §22.2). */
 const PITCH = 7;
 
 /** A sample, or (gone) the mover's end at t. */
-type Ev = { t: number; x: number; y: number; vx: number; vy: number; gone: boolean };
+type Ev = { t: number; x: number; y: number; vx: number; vy: number; h: number; gone: boolean };
 type Track = {
 	kind: "t" | "v" | "p"; force: string; name: string; n: number; kinds: string; colour: string; evs: Ev[];
 };
@@ -84,14 +87,14 @@ export class Tracks {
 
 	window(w: Window): void {
 		for (const row of w.s) {
-			const [i, dt, x, y, vx, vy] = row;
+			const [i, dt, x, y, vx, vy, h = 0] = row;
 			// A window written before §22.2 has no kinds or colour.
 			const [id, kind, force, name, n = 0, kinds = "", colour = ""] = w.movers[i] as
 				[string, Track["kind"], string, string, number?, string?, string?];
 			const tr = this.track(id, kind, force, name, n, kinds, colour);
 			this.add(tr, row.length === 2
-				? { t: w.t + dt, x: 0, y: 0, vx: 0, vy: 0, gone: true }
-				: { t: w.t + dt, x, y, vx, vy, gone: false });
+				? { t: w.t + dt, x: 0, y: 0, vx: 0, vy: 0, h: 0, gone: true }
+				: { t: w.t + dt, x, y, vx, vy, h, gone: false });
 		}
 	}
 
@@ -101,13 +104,13 @@ export class Tracks {
 	 */
 	live(t: number, movers: LiveMover[] = [], gone: string[] = []): void {
 		// A keyframe written before §22.2 has no kinds or colour.
-		for (const [id, kind, force, name, n, x, y, vx, vy, ts, kinds = "", colour = ""] of movers) {
-			this.add(this.track(id, kind, force, name, n, kinds, colour), { t: ts, x, y, vx, vy, gone: false });
+		for (const [id, kind, force, name, n, x, y, vx, vy, ts, kinds = "", colour = "", h = 0] of movers) {
+			this.add(this.track(id, kind, force, name, n, kinds, colour), { t: ts, x, y, vx, vy, h, gone: false });
 		}
 		for (const id of gone) {
 			const tr = this.m.get(id);
 			if (tr) {
-				this.add(tr, { t, x: 0, y: 0, vx: 0, vy: 0, gone: true });
+				this.add(tr, { t, x: 0, y: 0, vx: 0, vy: 0, h: 0, gone: true });
 			}
 		}
 	}
@@ -157,7 +160,9 @@ export class Tracks {
 			// A parked mover with a moving sample ahead moves too: frames go on until it does (ruling P15).
 			moving ||= next.x !== px || next.y !== py;
 		}
-		const [hx, hy] = heading(tr.evs, i);
+		// A gone ahead is an event to draw: frames go on until it is (ruling P10; a parked mover has no other reason).
+		moving ||= next !== undefined && next.gone;
+		const [hx, hy] = heading(tr.evs, i, tr.kind === "t");
 		const path = tr.kind === "t" ? line(tr.evs, i, x, y, hx, hy, tr.n * PITCH) : [];
 		return {
 			id, kind: tr.kind, force: tr.force, name: tr.name, x, y, hx, hy, moving, path,
@@ -195,10 +200,17 @@ export class Tracks {
 	}
 }
 
-/** The direction of travel: the velocity, else the step from the sample before, else east. */
-function heading(evs: Ev[], i: number): [number, number] {
+/**
+ * The direction of travel: the velocity, else (a train at rest) the heading Lua sent, else the step from the sample
+ * before, else east.
+ */
+function heading(evs: Ev[], i: number, train: boolean): [number, number] {
 	const e = evs[i];
 	const prev = evs[i - 1];
+	if (train && e.vx === 0 && e.vy === 0) {
+		const a = e.h * 2 * Math.PI;
+		return [Math.sin(a), -Math.cos(a)];
+	}
 	const [dx, dy] = e.vx !== 0 || e.vy !== 0 || !prev || prev.gone ? [e.vx, e.vy] : [e.x - prev.x, e.y - prev.y];
 	const len = Math.hypot(dx, dy);
 	return len === 0 ? [1, 0] : [dx / len, dy / len];

@@ -96,7 +96,7 @@ test("a window file is named by its earliest sample; x, y to 0.1, velocity to 0.
 	assert.deepEqual(await disk.json(files[0]), {
 		t: D + 1500,
 		movers: [["2.1.1", "t", "player", "locomotive", 2, "", ""], ["p:bob", "p", "player", "bob"]],
-		s: [[0, 500, 1.3, 0, 0.13, -2], [1, 0, -3, 0, 0, 0]],
+		s: [[0, 500, 1.3, 0, 0.13, -2, 0], [1, 0, -3, 0, 0, 0]],
 	});
 });
 
@@ -106,7 +106,7 @@ test("a keyframe holds every owned mover's last sample, parked ones included, an
 	movers.move(1, "i-1", "nauvis", D + 1000, [train("1.1.1", 4, { vx: 0 })], out);
 	await movers.close(D + 60_000, true, failed);
 	assert.deepEqual(await disk.json(keyframeKey("i-1", "nauvis", D + 60_000)), {
-		t: D + 60_000, movers: [["1.1.1", "t", "player", "locomotive", 2, 4, 0, 0, 0, D + 1000, "", ""]],
+		t: D + 60_000, movers: [["1.1.1", "t", "player", "locomotive", 2, 4, 0, 0, 0, D + 1000, "", "", 0]],
 	});
 	const { files } = await movers.close(D + 120_000, true, failed);
 	assert.deepEqual(files, [keyframeKey("i-1", "nauvis", D + 120_000)], "a parked train is in every keyframe");
@@ -169,7 +169,7 @@ test("§22.2: a train's kinds and colour ride on its live tuple and its window r
 		const { out } = gather();
 		movers.move(1, "i-1", "nauvis", D + 1000, [train("1.1.1", 1, { o: "LCC", c: "eb1200" })], out);
 		movers.move(1, "i-1", "nauvis", D + 2000, [train("1.1.1", 2)], out);
-		assert.deepEqual(movers.live("i-1", "nauvis").map(m => m.slice(10)), [["LCC", "eb1200"]]);
+		assert.deepEqual(movers.live("i-1", "nauvis").map(m => m.slice(10)), [["LCC", "eb1200", 0]]);
 		const { files } = await movers.close(D + 60_000, false, failed);
 		const w = await disk.json<{ movers: unknown[][] }>(files[0]);
 		assert.deepEqual(w?.movers, [["1.1.1", "t", "player", "locomotive", 2, "LCC", "eb1200"]]);
@@ -198,4 +198,15 @@ test("the trail is trimmed as samples come, not only when the live file is built
 	}
 	const trail = [...movers["surfs"].values()][0].trail;
 	assert.equal(trail.length, 17, "the samples of the last 16 s, 99 s down to 83 s");
+});
+
+test("§22.2: a train's heading rides on its live tuple and its window row, kept by a sample without it", async () => {
+	const { disk, movers } = await setup();
+	const { out } = gather();
+	movers.move(1, "i-1", "nauvis", D + 1000, [train("1.1.1", 1, { h: 0.75 }), player("bob", 3)], out);
+	movers.move(1, "i-1", "nauvis", D + 2000, [train("1.1.1", 2)], out);
+	assert.deepEqual(movers.live("i-1", "nauvis").map(m => m[12]), [0.75, 0]);
+	const { files } = await movers.close(D + 60_000, false, failed);
+	const w = await disk.json<{ s: number[][] }>(files[0]);
+	assert.deepEqual(w?.s, [[0, 0, 1, 0, 1, 0, 0.75], [1, 0, 3, 0, 0, 0], [0, 1000, 2, 0, 1, 0, 0.75]]);
 });

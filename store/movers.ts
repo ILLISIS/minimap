@@ -15,7 +15,8 @@ export const ownerDrops = new lib.Counter(
 );
 
 /** A window row (§8.7) with its absolute time until the close; [mover, t] alone is gone. */
-type Row = [mover: number, t: number] | [mover: number, t: number, x: number, y: number, vx: number, vy: number];
+type Row = [mover: number, t: number]
+	| [mover: number, t: number, x: number, y: number, vx: number, vy: number, h?: number];
 
 type Surf = {
 	map: string;
@@ -197,6 +198,7 @@ export class Movers {
 		// §22.2: a train's kinds and colour; a sample without them keeps its last sample's
 		const lm: LiveMover = [
 			m.j, m.k, m.f, m.name, n, m.x, m.y, m.vx, m.vy, at, m.o ?? last?.[10] ?? "", m.c ?? last?.[11] ?? "",
+			m.h ?? last?.[12] ?? 0,
 		];
 		s.live.set(m.j, lm);
 		// bounded with S3 off, where liveChanged isn't called; drop from the front, not a copy per sample
@@ -206,7 +208,8 @@ export class Movers {
 		s.trail.push(lm);
 		this.where.set(m.j, s);
 		s.changed = true;
-		s.rows.push([this.id(s, lm), at, m.x, m.y, m.vx, m.vy]);
+		const row: Row = [this.id(s, lm), at, m.x, m.y, m.vx, m.vy];
+		s.rows.push(m.k === "t" ? [this.id(s, lm), at, m.x, m.y, m.vx, m.vy, lm[12]] : row);
 		(out(map, surface).movers ??= []).push(lm);
 	}
 
@@ -250,7 +253,9 @@ export class Movers {
 		const key = moveKey(s.map, s.surface, first);
 		const rows = s.rows.map(r => (r.length === 2
 			? [r[0], r[1] - first]
-			: [r[0], r[1] - first, round(r[2], 10), round(r[3], 10), round(r[4], 100), round(r[5], 100)]));
+			: [
+				r[0], r[1] - first, round(r[2], 10), round(r[3], 10), round(r[4], 100), round(r[5], 100), ...r.slice(6),
+			]));
 		await this.disk.put(key, JSON.stringify({ t: first, movers: s.movers, s: rows }));
 		files.push(key);
 		(await this.day(s, utcDay(first))).windows.push([first, last]);

@@ -61,7 +61,7 @@ test("the tuples and MinimapLiveEvent (spec §8.9, §9.2, §10.6)", () => {
 	const recipe: Recipe = [1481520497, 99, "player", 1759600000000, 1759600060000, 1.5, 1.5, "iron-gear-wheel",
 		"normal"];
 	const mover: LiveMover = [
-		"4242.600.32", "t", "player", "locomotive", 16, 1.5, -2, 18, 0, 1759600000000, "LCC", "eb1200",
+		"4242.600.32", "t", "player", "locomotive", 16, 1.5, -2, 18, 0, 1759600000000, "LCC", "eb1200", 0.25,
 	];
 	assert.equal(valid(Tag)(tag), true);
 	assert.equal(valid(Recipe)(recipe), true);

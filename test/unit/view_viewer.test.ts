@@ -11,7 +11,7 @@ import { catalog, setup, type Open } from "./view_fakes.js";
 
 const A0: Area = { map: "i-1", surface: "nauvis", force: "player", z: 0, ax: 0, ay: 0 };
 /** Bob, a player at (0, 0) at t, walking vx tiles a second east. */
-const bobAt = (t: number, vx = 0): LiveMover => ["p:bob", "p", "player", "bob", 0, 0, 0, vx, 0, t, "", ""];
+const bobAt = (t: number, vx = 0): LiveMover => ["p:bob", "p", "player", "bob", 0, 0, 0, vx, 0, t, "", "", 0];
 const rec = (t: number, block: number, col: number): Rec => ({
 	t, block, pos: Uint16Array.from([0]), col: Uint16Array.from([col]),
 });
@@ -74,7 +74,7 @@ test("a frame is drawn only on a change: the view, data, the time, or a mover on
 	assert.equal(run(), 1, "two moves before a frame: one frame");
 	assert.equal(draws(), drawn + 1);
 	const T = 2_000_000_000;
-	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 0, 0, 5, 0, T, "", ""];
+	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 0, 0, 5, 0, T, "", "", 0];
 	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bob] });
 	await settle().catch(() => {}); // it never settles while bob walks
 	assert.equal(queue.length, 1, "bob walks on screen: frames keep coming");
@@ -84,7 +84,7 @@ test("a frame is drawn only on a change: the view, data, the time, or a mover on
 	perf.now += 5000;
 	run();
 	assert.equal(draws(), held, "60 s of data time after his last sample he holds, and frames stop (K31)");
-	const far: LiveMover = ["p:amy", "p", "player", "amy", 0, 99_999, 0, 5, 0, T + 61_000, "", ""];
+	const far: LiveMover = ["p:amy", "p", "player", "amy", 0, 99_999, 0, 5, 0, T + 61_000, "", "", 0];
 	lives[0].on({ t: T + 61_000, map: "i-1", surface: "nauvis", movers: [far] });
 	await settle();
 	const idle = draws();
@@ -407,3 +407,33 @@ test("live movers are drawn `delay` behind the data clock, and frames go on unti
 		assert.equal(run(), 1, "a frame was asked for");
 		assert.deepEqual(viewer.movers.map(m => [m.id, m.x]), [["p:bob", 5]], "at T + 1 s: 1 s on at 5 tiles a second");
 	});
+
+test("a parked mover's gone is drawn when its time comes: frames go on until then (§22.2, P10)", async () => {
+	const files = new Map([[CATALOG, catalog([[], [], [], [], []])]]);
+	const { viewer, settle, run, perf, lives } = setup(files, undefined, undefined, 2000);
+	await viewer.refresh();
+	await settle();
+	const T = 2_000_000_000;
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T)] });
+	perf.now += 3000;
+	lives[0].on({ t: T + 3000, map: "i-1", surface: "nauvis", gone: ["p:bob"] });
+	await new Promise(resolve => setTimeout(resolve, 20));
+	run();
+	assert.deepEqual(viewer.movers.map(m => m.id), ["p:bob"], "drawn at T + 1 s: the gone is still ahead");
+	perf.now += 2500;
+	assert.equal(run(), 1, "a frame was asked for, with no other event to draw one");
+	assert.equal(viewer.movers.length, 0, "drawn at T + 3.5 s: gone");
+});
+
+test("the live view keeps 64 events a mover (a public page, drawn 16 s behind, needs about 32)", async () => {
+	const files = new Map([[CATALOG, catalog([[], [], [], [], []])]]);
+	const { viewer, settle, lives } = setup(files);
+	await viewer.refresh();
+	await settle();
+	const T = 2_000_000_000;
+	for (let i = 0; i < 40; i++) {
+		lives[0].on({ t: T + (i * 100), map: "i-1", surface: "nauvis", movers: [bobAt(T + (i * 100), 1)] });
+	}
+	await settle().catch(() => {});
+	assert.equal(viewer.present.at(T).length, 1, "the first of 40 events is still held");
+});
