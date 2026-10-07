@@ -75,9 +75,14 @@ export const RecipeMsg = Type.Object({
 });
 export type RecipeMsg = Static<typeof RecipeMsg>;
 
+/**
+ * Each surface's name and whether it is one of the tile's (§6.7 step 1, §22.1). created: one surface made mid-game,
+ * which starts no resync (plan F ruling P3).
+ */
 export const SurfacesMsg = Type.Object({
 	type: Type.Literal("mm.surfaces"),
 	list: Type.Array(Type.Object({ name: Type.String(), tile: Type.Boolean() })),
+	created: Type.Optional(Type.Literal(true)),
 });
 export type SurfacesMsg = Static<typeof SurfacesMsg>;
 

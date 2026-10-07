@@ -22,6 +22,7 @@ test("LuaMsg accepts each message Lua prints, in its absent-field forms (spec §
 		{ type: "mm.recipe", s: "nauvis", f: "player", u: 99, x: 1.5, y: 1.5, r: "iron-gear-wheel", q: "rare" },
 		{ type: "mm.recipe", s: "nauvis", f: "player", u: 99 },
 		{ type: "mm.surfaces", list: [{ name: "nauvis", tile: true }, { name: "platform-1", tile: false }] },
+		{ type: "mm.surfaces", list: [{ name: "gleba", tile: true }], created: true },
 		{ type: "mm.resynced", trace: "ab.1", counts: { chunks: 3, movers: 0, tags: 0, machines: 0, drops: 0 } },
 		{ type: "trace", op: "minimap.journey", phase: "adopted", level: "verbose", trace: "ab.2", journey: "x" },
 	];

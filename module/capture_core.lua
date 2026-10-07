@@ -27,13 +27,39 @@ function core.bounds(tile)
 	return { x1 = tile.x * c - h, y1 = tile.y * c - h, x2 = tile.x * c + h, y2 = tile.y * c + h }
 end
 
---- K3, K32: whether chunk (cx, cy) of the surface named `surface` is captured. On the tile's surface only inside its
---- bounds; every other surface, and every surface without a tile, whole.
-function core.captured(tile, b, surface, cx, cy)
-	if not tile or surface ~= tile.surface then
+--- §22.1 (M14): whether the surface named `surface`, on planet `planet` (its LuaPlanet's name, or nil), is one of the
+--- tile's: tile.surface always; any other only when it is a planet the world's exclude list doesn't name, as gridworld
+--- tiles them (gridworld/module/tile.lua:153-158; plan F ruling P5). Without a tile, none is.
+function core.tiled(tile, surface, planet)
+	if not tile then
+		return false
+	end
+	if surface == tile.surface then
+		return true
+	end
+	if planet == nil then
+		return false
+	end
+	for _, name in pairs(tile.exclude or {}) do
+		if name == planet then
+			return false
+		end
+	end
+	return true
+end
+
+--- K3, §22.1: whether chunk (cx, cy) of the surface named `surface` (on `planet`, or nil) is captured: on a tiled
+--- surface only inside the tile's bounds; every other surface, and every surface without a tile, whole.
+function core.captured(tile, b, surface, cx, cy, planet)
+	if not core.tiled(tile, surface, planet) then
 		return true
 	end
 	return cx >= b.x1 and cx < b.x2 and cy >= b.y1 and cy < b.y2
+end
+
+--- A LuaSurface's planet name, or nil (a platform's, a lab's): core.tiled's and core.captured's last argument.
+function core.planet(s)
+	return s.planet and s.planet.name
 end
 
 --- A chunk's key (§6.2): per surface and force index, so equal coordinates on two surfaces never collide (C6).

@@ -7,9 +7,10 @@ local overlays = {}
 
 local MACHINE = { ["assembling-machine"] = true, furnace = true }
 
---- Whether the chunk under position is captured (K3, K32).
+--- Whether the chunk under position is captured (K3, §22.1).
 local function captured(st, surface, position)
-	return core.captured(st.tile, st.bounds, surface.name, math.floor(position.x / 32), math.floor(position.y / 32))
+	return core.captured(st.tile, st.bounds, surface.name, math.floor(position.x / 32), math.floor(position.y / 32),
+		core.planet(surface))
 end
 
 --- §6.4: a tag's new state, or { s, f, n } on removal, for captured forces and chunks. Returns true when it sent one.

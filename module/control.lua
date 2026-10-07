@@ -34,6 +34,22 @@ local function int(v)
 	return type(v) == "number" and v == math.floor(v)
 end
 
+--- A tile's exclude list (gridworld/world/contracts.ts:16-17): absent, or planet names.
+local function names(v)
+	if v == nil then
+		return true
+	end
+	if type(v) ~= "table" then
+		return false
+	end
+	for _, name in pairs(v) do
+		if type(name) ~= "string" then
+			return false
+		end
+	end
+	return true
+end
+
 --- mm_rt.config(json) (§6.1, §7.2): { tile? }, tile being gridworld.tile's { world, x, y, size, surface, … }. Capture
 --- starts here, once per boot. Every field Lua reads is checked; a bad one raises, and RCON returns the error.
 function control.config(json)
@@ -41,7 +57,7 @@ function control.config(json)
 	assert(type(c) == "table", "minimap config: not a JSON object: " .. tostring(json))
 	local tile = c.tile
 	assert(tile == nil or (type(tile) == "table" and type(tile.world) == "string" and type(tile.surface) == "string"
-		and int(tile.x) and int(tile.y) and int(tile.size) and tile.size > 0 and tile.size % 64 == 0),
+		and int(tile.x) and int(tile.y) and int(tile.size) and tile.size > 0 and tile.size % 64 == 0 and names(tile.exclude)),
 		"minimap config: bad tile: " .. tostring(json))
 	local st = ensure()
 	terrain.refresh_forces() -- players may have joined while the plugin was off, or forces merged
@@ -108,6 +124,7 @@ end
 control.events[defines.events.on_chunk_charted] = terrain.on_chunk_charted
 control.events[defines.events.on_chunk_deleted] = terrain.on_chunk_deleted
 control.events[defines.events.on_chunk_generated] = terrain.on_chunk_generated
+control.events[defines.events.on_surface_created] = terrain.on_surface_created
 control.events[defines.events.on_surface_deleted] = terrain.on_surface_deleted
 for _, name in ipairs({ "on_player_created", "on_player_changed_force", "on_player_removed", "on_forces_merged" }) do
 	control.events[defines.events[name]] = terrain.refresh_forces

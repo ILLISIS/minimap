@@ -214,13 +214,14 @@ t.case("resync: the surfaces, then only charted chunks, sent though unchanged, t
 		ctx.at(445, function() -- the walk takes ticks (K33)
 			local now = game.tick
 			local tiles = {}
-			for _, m in ipairs(mt.msgs("mm.surfaces", at, now)) do
+			for _, m in ipairs(mt.msgs("mm.surfaces", at, now, function(m) return not m.created end)) do
 				for _, s in ipairs(m.list) do
 					tiles[s.name] = s.tile
 				end
 			end
-			ctx.expect(tiles["mm-tile"] == true and tiles["mm-r"] == false and tiles.nauvis == false,
-				"mm.surfaces names every surface, and the tile's")
+			-- §22.1: Nauvis is a planet the test tile's (empty) exclude list doesn't name, so it is tiled too
+			ctx.expect(tiles["mm-tile"] == true and tiles["mm-r"] == false and tiles.nauvis == true,
+				"mm.surfaces names every surface, and the tile's and the planets' as tiled")
 			local r0, r1 = chunks(at, now, "mm-r", 0, 0), chunks(at, now, "mm-r", 1, 0)
 			ctx.expect(#r0 == 1 and #r1 == 1, "both charted chunks again, though unchanged")
 			ctx.expect(#chunks(at, now, "mm-r", 2, 0) == 0, "never the uncharted one")
@@ -264,10 +265,13 @@ t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted 
 				mt.chart("mm-w", x, y, mt.solid(20))
 			end
 		end
-		-- the tile's surface walks its bounds (chunks -1 .. 0 each way), not its rows
+		-- the tile's surface walks its bounds (chunks -1 .. 0 each way), not its rows; so does a planet (§22.1): Nauvis's
+		-- (1, 1), outside the bounds, is never walked
 		mt.chart("mm-tile", -1, -1, mt.solid(22))
 		mt.chart("mm-tile", 0, 0, mt.solid(22))
 		mt.chart("mm-tile", 1, 0, mt.solid(22))
+		mt.chart("nauvis", 0, 0, mt.solid(23))
+		mt.chart("nauvis", 1, 1, mt.solid(23))
 	end)
 	ctx.at(3002, function()
 		local b = storage.minimap.boxes[game.surfaces["mm-w"].index]
@@ -304,6 +308,10 @@ t.case("resync: the walk spreads over ticks, at most core.RESYNC_CHUNKS charted 
 		ctx.expect(n == 41 and seen[last .. ",0"], "every charted chunk of mm-w, row 0's last included, got " .. n)
 		ctx.expect(#chunks(at, now, "mm-tile", -1, -1) == 1 and #chunks(at, now, "mm-tile", 0, 0) == 1
 			and #chunks(at, now, "mm-tile", 1, 0) == 0, "the tile's bounds: (-1, -1) and (0, 0), not (1, 0)")
+		ctx.expect(#chunks(at, now, "nauvis", 0, 0) == 1 and #chunks(at, now, "nauvis", 1, 1) == 0,
+			"a planet's walk is the tile's bounds too: Nauvis's (0, 0), not (1, 1) (§22.1)")
+		mt.chart("nauvis", 0, 0, nil)
+		mt.chart("nauvis", 1, 1, nil)
 	end)
 end)
 
@@ -354,3 +362,49 @@ t.case("terrain: a new surface on a deleted surface's index is sent a chunk equa
 			ctx.expect(#chunks(at, game.tick, "mm-y", 0, 0) == 1, "the same bytes on the reused index are sent")
 		end)
 	end)
+
+t.case("terrain: a planet is clipped to the tile's bounds like the tile's surface, unless the tile's exclude list names "
+	.. "it (§22.1, M14)", function(ctx)
+	local at
+	ctx.at(3730, function()
+		at = game.tick
+		mt.chart("nauvis", 0, 0, mt.solid(0x3131))
+		mt.chart("nauvis", 1, 1, mt.solid(0x3232))
+		mm_rt.seam.charted("nauvis", "player", 0, 0)
+		mm_rt.seam.charted("nauvis", "player", 1, 1)
+	end)
+	ctx.at(3734, function()
+		ctx.expect(game.surfaces.nauvis.planet ~= nil, "Nauvis's surface has its planet")
+		ctx.expect(#chunks(at, game.tick, "nauvis", 0, 0) == 1, "Nauvis's (0, 0), inside the tile's bounds, is sent")
+		ctx.expect(#chunks(at, game.tick, "nauvis", 1, 1) == 0, "Nauvis's (1, 1), outside them, isn't")
+		local tile = {}
+		for k, v in pairs(mt.TILE) do
+			tile[k] = v
+		end
+		tile.exclude = { "nauvis" }
+		mm_rt.config(helpers.table_to_json({ tile = tile }))
+		mm_rt.seam.force("player") -- the config re-read the forces with players
+		at = game.tick
+		mm_rt.seam.charted("nauvis", "player", 1, 1)
+	end)
+	ctx.at(3738, function()
+		ctx.expect(#chunks(at, game.tick, "nauvis", 1, 1) == 1, "excluded, Nauvis is captured whole")
+		mt.config()
+		mt.chart("nauvis", 0, 0, nil)
+		mt.chart("nauvis", 1, 1, nil)
+	end)
+end)
+
+t.case("terrain: a surface made mid-game is sent at once, alone, in an mm.surfaces flagged created (§22.1, §6.9; plan "
+	.. "F ruling P3)", function(ctx)
+	local at
+	ctx.at(3740, function()
+		at = game.tick
+		game.create_surface("mm-n")
+	end)
+	ctx.at(3742, function()
+		local got = mt.msgs("mm.surfaces", at, game.tick, function(m) return m.created and m.list[1].name == "mm-n" end)
+		ctx.expect(#got == 1 and #got[1].list == 1 and got[1].list[1].tile == false,
+			"one mm.surfaces with mm-n alone, untiled (a lab surface is no planet), got " .. #got)
+	end)
+end)

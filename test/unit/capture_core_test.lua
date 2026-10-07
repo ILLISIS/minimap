@@ -34,7 +34,7 @@ t.test("bounds and the clip (§6.1, K3, K32): [x1, x2) per axis in chunks, only 
 	t.expect_true(not core.captured(tile, b, "nauvis", 1, 0), "x2 is out")
 	t.expect_true(not core.captured(tile, b, "nauvis", 0, 1), "y2 is out")
 	t.expect_true(not core.captured(tile, b, "nauvis", -2, 0), "below x1 is out")
-	t.expect_true(core.captured(tile, b, "vulcanus", 50, 50), "another surface is captured whole (K32)")
+	t.expect_true(core.captured(tile, b, "mm-lab", 50, 50), "a surface that is no planet is captured whole")
 	local west = { world = "w", x = -1, y = 2, size = 512, surface = "nauvis" }
 	t.expect_same(core.bounds(west), { x1 = -24, y1 = 24, x2 = -8, y2 = 40 })
 	local bw = core.bounds(west)
@@ -257,4 +257,22 @@ t.test("migrations (§6.8): a new table becomes schema 1; schema 1 is left as it
 	local newer = { schema = 2, marker = "untouched" }
 	t.expect_error(function() core.migrate(newer) end, "schema 2 is newer")
 	t.expect_eq(newer.marker, "untouched")
+end)
+
+t.test("§22.1 (M14): a tile's planets are tiled, less its exclude list; tile.surface always; nothing else", function()
+	local tile = { world = "w", x = 0, y = 0, size = 64, surface = "nauvis", exclude = { "aquilo" } }
+	local b = core.bounds(tile)
+	t.expect_true(core.tiled(tile, "nauvis", nil), "tile.surface, whatever its planet")
+	t.expect_true(core.tiled(tile, "vulcanus", "vulcanus"), "a planet")
+	t.expect_true(not core.tiled(tile, "aquilo", "aquilo"), "an excluded planet")
+	t.expect_true(not core.tiled(tile, "platform-1", nil), "a platform")
+	t.expect_true(not core.tiled(nil, "vulcanus", "vulcanus"), "no tile: nothing is tiled")
+	t.expect_true(core.tiled({ world = "w", x = 0, y = 0, size = 64, surface = "nauvis" }, "gleba", "gleba"),
+		"no exclude list")
+	t.expect_true(core.captured(tile, b, "vulcanus", 0, 0, "vulcanus"), "a tiled planet's chunk inside the bounds")
+	t.expect_true(not core.captured(tile, b, "vulcanus", 1, 1, "vulcanus"), "not one outside them")
+	t.expect_true(core.captured(tile, b, "aquilo", 1, 1, "aquilo"), "an excluded planet is captured whole")
+	t.expect_true(core.captured(tile, b, "platform-1", 500, -500, nil), "a platform is captured whole")
+	t.expect_eq(core.planet({ name = "nauvis", planet = { name = "nauvis" } }), "nauvis")
+	t.expect_eq(core.planet({ name = "platform-1" }), nil)
 end)

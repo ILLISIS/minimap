@@ -72,8 +72,8 @@ function terrain.on_chunk_charted(e, forced)
 	if not (st and st.configured and st.forces[e.force.index]) then
 		return
 	end
-	local p = e.position
-	if not core.captured(st.tile, st.bounds, game.get_surface(e.surface_index).name, p.x, p.y) then
+	local p, s = e.position, game.get_surface(e.surface_index)
+	if not core.captured(st.tile, st.bounds, s.name, p.x, p.y, core.planet(s)) then
 		return
 	end
 	local key = core.key(e.surface_index, e.force.index, p.x, p.y)
@@ -139,7 +139,8 @@ function terrain.take(st)
 	end
 end
 
---- §6.7 step 1: each surface's name and whether it is the tile's, at most core.SURFACES_MAX a message (plan ruling 9).
+--- §6.7 step 1: each surface's name and whether it is one of the tile's (§22.1), at most core.SURFACES_MAX a message
+--- (plan ruling 9).
 function terrain.surfaces(st)
 	local list = {}
 	for _, s in pairs(game.surfaces) do
@@ -147,9 +148,20 @@ function terrain.surfaces(st)
 			tick.send{ type = "mm.surfaces", list = list }
 			list = {}
 		end
-		list[#list + 1] = { name = s.name, tile = st.tile ~= nil and s.name == st.tile.surface }
+		list[#list + 1] = { name = s.name, tile = core.tiled(st.tile, s.name, core.planet(s)) }
 	end
 	tick.send{ type = "mm.surfaces", list = list }
+end
+
+--- §22.1, §6.9: a surface made mid-game (a planet gridworld tiles at its config, a platform) is marked before its first
+--- chunk, in an mm.surfaces of its own flagged created, which starts no resync at the controller (plan F ruling P3).
+--- Before this boot's config nothing is sent: the resync that follows the config lists it.
+function terrain.on_surface_created(e)
+	local st, s = storage.minimap, game.get_surface(e.surface_index)
+	if st and st.configured and s then
+		tick.send{ type = "mm.surfaces", list = { { name = s.name, tile = core.tiled(st.tile, s.name, core.planet(s)) } },
+			created = true }
+	end
 end
 
 --- K33's upgrade: each surface's rows of generated chunks, in `ys` (the order they appeared) and `rows` (y → its x
@@ -202,10 +214,10 @@ function terrain.resync(st)
 	st.resync.walk = { list = list, k = 0 }
 end
 
---- A surface to walk and its area: the tile's bounds on its surface, else its rows of generated chunks.
+--- A surface to walk and its area: the tile's bounds on each tiled surface (§22.1), else its rows of generated chunks.
 local function area(st, si)
 	local s = si and game.get_surface(si)
-	if s and st.tile and s.name == st.tile.surface then
+	if s and core.tiled(st.tile, s.name, core.planet(s)) then
 		return s, st.bounds
 	end
 	return s, s and st.boxes[si]
