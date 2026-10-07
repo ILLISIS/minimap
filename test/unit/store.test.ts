@@ -293,3 +293,53 @@ test("a close that throws after writing still hands its keys to the listeners", 
 	assert.ok(seen[0].some(k => k.endsWith(".c.gz")), seen[0].join());
 	assert.ok(seen[0].some(k => k.endsWith("/index.json.gz")), seen[0].join());
 });
+
+test("§22.1 (M14): a tile instance's tiled planets are its world's, its platforms its own; UE's planet edges follow",
+	async () => {
+		const instances = [tile(3, 0)];
+		const cluster = {
+			instance: (id: number) => instances.find(i => i.id === id),
+			instances: () => instances,
+			edges: async (mapOf: (instance: number, surface: string) => string) => new Map<string, Quad[]>([
+				[`${mapOf(3, "vulcanus")}|vulcanus`, [[256, -256, 256, 256]]],
+			]),
+			assets: () => undefined,
+		};
+		let now = T;
+		const store = new Store(await tempDir("store"), cluster, fakeLogger(), () => 300, () => now);
+		await store.load();
+		await store.ingest(3, [
+			{ type: "mm.surfaces", list: [
+				{ name: "nauvis", tile: true }, { name: "vulcanus", tile: true }, { name: "platform-1", tile: false },
+			], t: T + 1 },
+			chunk(T + 2, 0, 5, "vulcanus"),
+			chunk(T + 3, 0, 6, "platform-1"),
+			chunk(T + 4, 0, 7),
+		]);
+		now = T + 300_000;
+		await store.closeWindow();
+		const cat = (await store.disk.json<Catalog>(CATALOG))!;
+		assert.deepEqual(Object.keys(cat.maps["gw-w1"].surfaces).sort(), ["nauvis", "vulcanus"], "the world's planets");
+		assert.deepEqual(Object.keys(cat.maps["i-3"].surfaces), ["platform-1"], "only the instance's untiled surfaces");
+		assert.deepEqual(cat.maps["gw-w1"].surfaces.vulcanus.edges, [[256, -256, 256, 256]], "UE's Vulcanus edge");
+	});
+
+test("§22.1: a surface made mid-game is tiled without starting a resync; a later list's flag replaces it (ruling P3)",
+	async () => {
+		const { store } = await setup([tile(3, 0)]);
+		const updates = await store.ingest(3, [
+			{ type: "mm.surfaces", list: [{ name: "nauvis", tile: true }], t: T },
+			sample(T + 1, "3.1.1", 1),
+			{ type: "mm.surfaces", list: [{ name: "gleba", tile: true }], created: true, t: T + 2 },
+			chunk(T + 3, 0, 5, "gleba"),
+			{ type: "mm.resynced", trace: "r.1", counts: {}, t: T + 4 },
+		]);
+		assert.ok(updates.some(u => u.map === "gw-w1" && u.surface === "gleba" && u.chunks?.length === 1),
+			"gleba's chunk is the world's");
+		assert.equal(store.subscribed("gw-w1|nauvis").movers?.length, 1, "3.1.1, re-sent before gleba came, is live");
+		const later = await store.ingest(3, [
+			{ type: "mm.surfaces", list: [{ name: "gleba", tile: false }], t: T + 5 },
+			chunk(T + 6, 1, 5, "gleba"),
+		]);
+		assert.deepEqual(later.map(u => u.map), ["i-3"], "no longer tiled: the instance's own");
+	});

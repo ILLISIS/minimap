@@ -5,7 +5,7 @@ import { CAP, Clock, Tracks } from "../../web/view/movers.js";
 
 const T = 1_759_600_000_000;
 const car = (x: number, vx: number, ts: number, id = "1.5.v7"): LiveMover => [
-	id, "v", "player", "car", 0, x, 0, vx, 0, ts,
+	id, "v", "player", "car", 0, x, 0, vx, 0, ts, "", "",
 ];
 const where = (tracks: Tracks, t: number) => tracks.at(t).map(m => [m.id, Math.round(m.x * 100) / 100, m.moving]);
 
@@ -95,7 +95,7 @@ test("a window's rows are put in time order, and [mover, dt] alone is a gone (§
 test("a train is a line n × 7 tiles back along its samples, then on in the direction of the last step (§11.7)", () => {
 	const tracks = new Tracks();
 	const train = (x: number, y: number, vx: number, vy: number, ts: number): LiveMover => [
-		"2.1.1", "t", "player", "locomotive", 3, x, y, vx, vy, ts,
+		"2.1.1", "t", "player", "locomotive", 3, x, y, vx, vy, ts, "", "",
 	];
 	tracks.live(T, [train(0, 0, 10, 0, T)]);
 	tracks.live(T + 1000, [train(10, 0, 0, 10, T + 1000)]);
@@ -103,7 +103,7 @@ test("a train is a line n × 7 tiles back along its samples, then on in the dire
 	const [m] = tracks.at(T + 1500);
 	assert.deepEqual([m.hx, m.hy], [0, 1], "heading down");
 	assert.deepEqual(m.path, [[10, 5], [10, 0], [0, 0], [-6, 0]], "21 tiles: 5 + 10 along samples, 6 on");
-	tracks.live(T + 1500, [["2.1.9", "t", "player", "locomotive", 0, 1, 1, 0, 0, T + 1500]]);
+	tracks.live(T + 1500, [["2.1.9", "t", "player", "locomotive", 0, 1, 1, 0, 0, T + 1500, "", ""]]);
 	const odd = tracks.at(T + 1500).find(s => s.id === "2.1.9")!;
 	assert.ok(odd.path.flat().every(Number.isFinite), "no carriages: no NaN");
 });

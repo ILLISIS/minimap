@@ -10,6 +10,8 @@ import { choose } from "../../web/view/viewer.js";
 import { catalog, setup, type Open } from "./view_fakes.js";
 
 const A0: Area = { map: "i-1", surface: "nauvis", force: "player", z: 0, ax: 0, ay: 0 };
+/** Bob, a player at (0, 0) at t, walking vx tiles a second east. */
+const bobAt = (t: number, vx = 0): LiveMover => ["p:bob", "p", "player", "bob", 0, 0, 0, vx, 0, t, "", ""];
 const rec = (t: number, block: number, col: number): Rec => ({
 	t, block, pos: Uint16Array.from([0]), col: Uint16Array.from([col]),
 });
@@ -72,7 +74,7 @@ test("a frame is drawn only on a change: the view, data, the time, or a mover on
 	assert.equal(run(), 1, "two moves before a frame: one frame");
 	assert.equal(draws(), drawn + 1);
 	const T = 2_000_000_000;
-	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 0, 0, 5, 0, T];
+	const bob: LiveMover = ["p:bob", "p", "player", "bob", 0, 0, 0, 5, 0, T, "", ""];
 	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bob] });
 	await settle().catch(() => {}); // it never settles while bob walks
 	assert.equal(queue.length, 1, "bob walks on screen: frames keep coming");
@@ -82,7 +84,7 @@ test("a frame is drawn only on a change: the view, data, the time, or a mover on
 	perf.now += 5000;
 	run();
 	assert.equal(draws(), held, "60 s of data time after his last sample he holds, and frames stop (K31)");
-	const far: LiveMover = ["p:amy", "p", "player", "amy", 0, 99_999, 0, 5, 0, T + 61_000];
+	const far: LiveMover = ["p:amy", "p", "player", "amy", 0, 99_999, 0, 5, 0, T + 61_000, "", ""];
 	lives[0].on({ t: T + 61_000, map: "i-1", surface: "nauvis", movers: [far] });
 	await settle();
 	const idle = draws();
@@ -155,7 +157,7 @@ test("a switch leaves nothing of the old selection behind, even results still in
 	release();
 	await settle();
 	const T = 2_000_000_000;
-	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 0, 0, T]] });
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T)] });
 	await settle();
 	assert.deepEqual(viewer.areas.keys(), [areaKey(V0)]);
 	assert.deepEqual(viewer.bytes.keys(), []);
@@ -288,7 +290,7 @@ test("a failed load is not asked for again every frame; a refresh, a switch or a
 	const { viewer, run, perf, lives, requests } = setup(files);
 	await viewer.refresh();
 	const T = 2_000_000_000;
-	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 1, 0, T]] });
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T, 1)] });
 	const frames = async (n: number) => {
 		for (let i = 0; i < n; i++) {
 			await new Promise(resolve => setTimeout(resolve, 1));
@@ -314,7 +316,7 @@ test("a live update that arrives after a switch to another force of the same sur
 	await settle();
 	viewer.select({ map: "i-1", surface: "nauvis", force: "enemy" });
 	const T = 2_000_000_000;
-	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 0, 0, T]] });
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T)] });
 	await settle();
 	assert.equal(viewer.present.size, 0);
 });
@@ -361,7 +363,7 @@ test("a live update that throws doesn't stop the later ones", async () => {
 	await settle();
 	const T = 2_000_000_000;
 	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: 5 as never });
-	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [["p:bob", "p", "player", "bob", 0, 0, 0, 0, 0, T]] });
+	lives[0].on({ t: T, map: "i-1", surface: "nauvis", movers: [bobAt(T)] });
 	await settle();
 	assert.equal(viewer.present.size, 1);
 });

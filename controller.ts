@@ -2,7 +2,7 @@ import * as path from "node:path";
 import type * as lib from "@clusterio/lib";
 import type { ControllerPluginContext } from "@clusterio/controller";
 import { addRoutes } from "./http.js";
-import { edgeLines, mapOf, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
+import { edgeLines, tileOf, ueApi, type Cluster, type EdgeApiLike } from "./integrations.js";
 import { MinimapDataEvent, MinimapLiveEvent } from "./messages.js";
 import { lifecycle } from "./runtime.js";
 import { iconPaths, pageFiles } from "./s3/page.js";
@@ -38,7 +38,7 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 			const id = controller.config.get("controller.default_mod_pack_id");
 			return id === null ? undefined : controller.modPacks.get(id)?.exportManifest?.assets;
 		},
-		edges: async () => {
+		edges: async mapOfSide => {
 			if (!ue) {
 				ue = await ueApi(controller.pluginInfos);
 				if (ue) {
@@ -48,8 +48,7 @@ export default async function loadControllerPlugin(context: ControllerPluginCont
 			if (!ue) {
 				return new Map();
 			}
-			const instances = new Map(cluster.instances().map(i => [i.id, i]));
-			return edgeLines(ue.list(), (id, surface) => mapOf(instances.get(id) ?? { id, tile: null }, surface));
+			return edgeLines(ue.list(), mapOfSide);
 		},
 	};
 	const root = path.resolve(controller.config.get("controller.database_directory"), "minimap");

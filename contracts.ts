@@ -152,9 +152,12 @@ export const Recipe = Type.Tuple([
 ]);
 export type Recipe = Static<typeof Recipe>;
 
-/** §10.6: [id, kind, force, name, n, x, y, vx, vy, ts]; n = 0 when not a train. */
+/**
+ * §10.6, §22.2: [id, kind, force, name, n, x, y, vx, vy, ts, kinds, colour]; n = 0, and kinds and colour "", when not
+ * a train or not known (plan F ruling P8).
+ */
 export const LiveMover = Type.Tuple([
 	Type.String(), Kind, Type.String(), Type.String(), Type.Integer(), Type.Number(), Type.Number(), Type.Number(),
-	Type.Number(), Type.Number(),
+	Type.Number(), Type.Number(), Type.String(), Type.String(),
 ]);
 export type LiveMover = Static<typeof LiveMover>;

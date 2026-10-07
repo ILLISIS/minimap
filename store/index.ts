@@ -1,5 +1,5 @@
 import * as lib from "@clusterio/lib";
-import type { LiveMover, Recipe, Stamped, Tag } from "../contracts.js";
+import type { LiveMover, Recipe, Stamped, SurfacesMsg, Tag } from "../contracts.js";
 import { mapInfo, mapOf, type Cluster, type Instance } from "../integrations.js";
 import { lifecycle, rateLimited } from "../runtime.js";
 import { CATALOG, indexKey, unname, type Area, type AreaIndex } from "../shared/keys.js";
@@ -80,6 +80,8 @@ export class Store {
 	private hour?: number;
 	/** Areas whose recipes file was written at the last close: their index gets the flag at the next (ruling 24). */
 	private recipeAreas: Area[] = [];
+	/** §22.1: each instance's tiled surfaces, from its mm.surfaces (plan F ruling P4). */
+	private tiled = new Map<number, Set<string>>();
 
 	constructor(
 		root: string,
@@ -204,7 +206,9 @@ export class Store {
 			// it is the publisher's mtime scan, Plan C).
 			try {
 				const info = mapInfo(this.cluster.instances());
-				const edges = await this.cluster.edges();
+				const edges = await this.cluster.edges(
+					(id, surface) => this.mapFor(this.cluster.instance(id) ?? { id, name: "", tile: null }, surface),
+				);
 				const catalog = this.catalog.json(info, edges, c, this.windowSeconds() * 1000, this.cluster.assets());
 				try {
 					await this.disk.put(CATALOG, JSON.stringify(catalog));
@@ -268,14 +272,14 @@ export class Store {
 		const id = inst.id;
 		switch (m.type) {
 			case "mm.chunk": {
-				const map = mapOf(inst, m.s);
+				const map = this.mapFor(inst, m.s);
 				if (await this.terrain.chunk(id, map, m.s, m.f, m.x, m.y, m.t, m.d) === "changed") {
 					(out(map, m.s).chunks ??= []).push([m.f, m.x, m.y, m.d ?? ""]);
 				}
 				break;
 			}
 			case "mm.move":
-				this.movers.move(id, mapOf(inst, m.s), m.s, m.t, m.m, out);
+				this.movers.move(id, this.mapFor(inst, m.s), m.s, m.t, m.m, out);
 				break;
 			case "mm.adopt": {
 				const previous = this.movers.adopt(id, m.j);
@@ -284,15 +288,13 @@ export class Store {
 				break;
 			}
 			case "mm.tag":
-				this.overlays.tag(id, mapOf(inst, m.s), m.t, m, out);
+				this.overlays.tag(id, this.mapFor(inst, m.s), m.t, m, out);
 				break;
 			case "mm.recipe":
-				this.overlays.recipe(id, mapOf(inst, m.s), m.t, m, out);
+				this.overlays.recipe(id, this.mapFor(inst, m.s), m.t, m, out);
 				break;
 			case "mm.surfaces":
-				// Plan ruling 6: §6.7's first resync message starts the instance's resync here too.
-				this.movers.begin(id);
-				this.overlays.begin(id);
+				this.surfaces(id, m);
 				break;
 			case "mm.resynced":
 				this.movers.resynced(id, m.t, out);
@@ -301,6 +303,32 @@ export class Store {
 				break;
 			default:
 				break;
+		}
+	}
+
+	/** §22.1: the map of an instance's surface, knowing which of its surfaces are tiled. */
+	private mapFor(inst: Instance, surface: string): string {
+		return mapOf(inst, surface, this.tiled.get(inst.id));
+	}
+
+	/**
+	 * mm.surfaces: each entry's flag replaces the last (plan F ruling P4: a list comes in parts, and a surface made
+	 * mid-game comes alone). Plan ruling 6: a resync's first message starts the instance's resync here too; a surface
+	 * made mid-game (created) doesn't, or a resync it falls in would close what was re-sent before it (ruling P3).
+	 */
+	private surfaces(id: number, m: SurfacesMsg): void {
+		const tiled = this.tiled.get(id) ?? new Set<string>();
+		this.tiled.set(id, tiled);
+		for (const s of m.list) {
+			if (s.tile) {
+				tiled.add(s.name);
+			} else {
+				tiled.delete(s.name);
+			}
+		}
+		if (!m.created) {
+			this.movers.begin(id);
+			this.overlays.begin(id);
 		}
 	}
 

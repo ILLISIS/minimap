@@ -14,7 +14,8 @@ export type Instance = { id: number; name: string; tile: Tile | null };
 export type Cluster = {
 	instance(id: number): Instance | undefined;
 	instances(): Instance[];
-	edges(): Promise<Map<string, Quad[]>>;
+	/** UE's edge lines by "<map>|<surface>", each side on the map `mapOf` gives it (the store's: §22.1). */
+	edges(mapOf: (instance: number, surface: string) => string): Promise<Map<string, Quad[]>>;
 	assets(): Record<string, string> | undefined;
 };
 
@@ -35,9 +36,17 @@ export function tileOf(config: { get(field: string): unknown }): Tile | null {
 	}
 }
 
-/** K9, K32: a tile instance's tile surface is its world's map; every other surface is the instance's own. */
-export function mapOf(instance: { id: number; tile: Tile | null }, surface: string): string {
-	return instance.tile && surface === instance.tile.surface ? `gw-${name(instance.tile.world)}` : `i-${instance.id}`;
+/**
+ * K9, §22.1 (M14): a tile instance's tiled surfaces are its world's map: its tile.surface always, and each surface its
+ * mm.surfaces marked tiled (`tiled`, plan F ruling P4). Every other surface, and every surface of an instance that is
+ * no tile, is the instance's own.
+ */
+export function mapOf(
+	instance: { id: number; tile: Tile | null }, surface: string, tiled?: ReadonlySet<string>,
+): string {
+	return instance.tile && (surface === instance.tile.surface || tiled?.has(surface))
+		? `gw-${name(instance.tile.world)}`
+		: `i-${instance.id}`;
 }
 
 /** The catalog's titles, tile sizes and bounds (§8.8, §12.2), from the instances as they are now. */

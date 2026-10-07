@@ -23,6 +23,10 @@ test("maps (K9, K32): a tile's tile surface is its world's; its other surfaces a
 		assert.equal(mapOf({ id: 5, tile: tile(0) }, "nauvis"), "gw-w~201");
 		assert.equal(mapOf({ id: 5, tile: tile(0) }, "vulcanus"), "i-5");
 		assert.equal(mapOf({ id: 6, tile: null }, "nauvis"), "i-6");
+		// §22.1 (M14): a surface the instance's mm.surfaces marked tiled is its world's, on a tile only
+		assert.equal(mapOf({ id: 5, tile: tile(0) }, "vulcanus", new Set(["vulcanus"])), "gw-w~201");
+		assert.equal(mapOf({ id: 5, tile: tile(0) }, "platform-1", new Set(["vulcanus"])), "i-5");
+		assert.equal(mapOf({ id: 6, tile: null }, "vulcanus", new Set(["vulcanus"])), "i-6", "no tile, no world");
 	});
 
 test("without GW: one i-<id> map per instance; with it, a world map with each tile's bounds (§12.2)", () => {

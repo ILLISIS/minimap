@@ -176,7 +176,7 @@ test("the live lane PUTs each changed map surface's live file every period; the 
 		const { fetch, calls } = fakeFetch(() => answers.shift() ?? 200);
 		const p = setup(store, fetch);
 		await p.restart();
-		const car = (t: number): LiveMover => ["i-1.5.v7", "v", "player", "car", 0, t, 0, 1, 0, t];
+		const car = (t: number): LiveMover => ["i-1.5.v7", "v", "player", "car", 0, t, 0, 1, 0, t, "", ""];
 		store.moved({ map: "i-1", surface: "nauvis", t: 1, movers: [car(1)] });
 		await until(() => calls.length === 1);
 		store.moved({ map: "i-1", surface: "nauvis", t: 2, movers: [car(2)] });

@@ -95,7 +95,7 @@ test("a window file is named by its earliest sample; x, y to 0.1, velocity to 0.
 	assert.equal(samples, 2);
 	assert.deepEqual(await disk.json(files[0]), {
 		t: D + 1500,
-		movers: [["2.1.1", "t", "player", "locomotive", 2], ["p:bob", "p", "player", "bob"]],
+		movers: [["2.1.1", "t", "player", "locomotive", 2, "", ""], ["p:bob", "p", "player", "bob"]],
 		s: [[0, 500, 1.3, 0, 0.13, -2], [1, 0, -3, 0, 0, 0]],
 	});
 });
@@ -106,7 +106,7 @@ test("a keyframe holds every owned mover's last sample, parked ones included, an
 	movers.move(1, "i-1", "nauvis", D + 1000, [train("1.1.1", 4, { vx: 0 })], out);
 	await movers.close(D + 60_000, true, failed);
 	assert.deepEqual(await disk.json(keyframeKey("i-1", "nauvis", D + 60_000)), {
-		t: D + 60_000, movers: [["1.1.1", "t", "player", "locomotive", 2, 4, 0, 0, 0, D + 1000]],
+		t: D + 60_000, movers: [["1.1.1", "t", "player", "locomotive", 2, 4, 0, 0, 0, D + 1000, "", ""]],
 	});
 	const { files } = await movers.close(D + 120_000, true, failed);
 	assert.deepEqual(files, [keyframeKey("i-1", "nauvis", D + 120_000)], "a parked train is in every keyframe");
@@ -162,3 +162,30 @@ test("at start, a map surface with a day index is changed: its first live file g
 		assert.deepEqual(movers.liveChanged(D), [{ map: "i-1", surface: "Bob's base", t: D, movers: [] }]);
 		assert.deepEqual(movers.liveChanged(D + 1), []);
 	});
+
+test("§22.2: a train's kinds and colour ride on its live tuple and its window row; a sample without them keeps them",
+	async () => {
+		const { disk, movers } = await setup();
+		const { out } = gather();
+		movers.move(1, "i-1", "nauvis", D + 1000, [train("1.1.1", 1, { o: "LCC", c: "eb1200" })], out);
+		movers.move(1, "i-1", "nauvis", D + 2000, [train("1.1.1", 2)], out);
+		assert.deepEqual(movers.live("i-1", "nauvis").map(m => m.slice(10)), [["LCC", "eb1200"]]);
+		const { files } = await movers.close(D + 60_000, false, failed);
+		const w = await disk.json<{ movers: unknown[][] }>(files[0]);
+		assert.deepEqual(w?.movers, [["1.1.1", "t", "player", "locomotive", 2, "LCC", "eb1200"]]);
+	});
+
+test("the live file carries every sample of the last 16 s and each mover's last; a gone mover's none (§22.2, ruling " +
+	"P2)", async () => {
+	const { movers } = await setup();
+	const { out } = gather();
+	movers.move(1, "i-1", "nauvis", D, [train("a", 1)], out);
+	movers.move(1, "i-1", "nauvis", D + 1000, [train("a", 2), player("bob", 5)], out);
+	movers.move(1, "i-1", "nauvis", D + 20_000, [train("a", 3)], out);
+	const [first] = movers.liveChanged(D + 20_000);
+	assert.deepEqual(first.movers.map(m => [m[0], m[5]]), [["a", 3], ["p:bob", 5]], "a's older samples are past 16 s");
+	movers.move(1, "i-1", "nauvis", D + 21_000, [train("a", 4)], out);
+	movers.move(1, "i-1", "nauvis", D + 22_000, [gone("p:bob")], out);
+	const [next] = movers.liveChanged(D + 22_000);
+	assert.deepEqual(next.movers.map(m => [m[0], m[5]]), [["a", 3], ["a", 4]], "both of a's, in order; bob is gone");
+});

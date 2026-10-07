@@ -33,9 +33,18 @@ type Surf = {
 	touched: Set<string>;
 	/** Changed since the last liveChanged(). */
 	changed: boolean;
+	/** Every owned sample of the last TRAIL ms, oldest first; a gone mover's are dropped. */
+	trail: LiveMover[];
 };
 
 const round = (v: number, k: number) => Math.round(v * k) / k;
+
+/**
+ * Plan F ruling P2 (§22.2): the public page draws movers 16 s behind live, so its live file carries every sample of
+ * the last 16 s, not only each mover's last: one between two PUTs, or in a PUT a later one replaced (§10.6), or in a
+ * file a poll missed, still reaches it.
+ */
+export const TRAIL = 16_000;
 
 export class Movers {
 	/** K28: a journey's owner, the first instance to sample it; mm.adopt moves it, its owner's gone clears it. */
@@ -157,11 +166,15 @@ export class Movers {
 		}
 	}
 
-	/** Changed map surfaces since the last call, each with every owned live mover (§10.6). */
+	/**
+	 * Changed map surfaces since the last call, each with every owned live mover's last sample (§10.6) and every sample
+	 * of the last TRAIL ms (ruling P2).
+	 */
 	liveChanged(t: number): { map: string; surface: string; t: number; movers: LiveMover[] }[] {
 		return [...this.surfs.values()].filter(s => s.changed).map(s => {
 			s.changed = false;
-			return { map: s.map, surface: s.surface, t, movers: [...s.live.values()] };
+			s.trail = s.trail.filter(m => m[9] >= t - TRAIL);
+			return { map: s.map, surface: s.surface, t, movers: [...new Set([...s.trail, ...s.live.values()])] };
 		});
 	}
 
@@ -175,13 +188,18 @@ export class Movers {
 		samplesTaken.inc();
 		const s = this.surf(map, surface);
 		const before = this.where.get(m.j);
-		const n = m.n ?? before?.live.get(m.j)?.[4] ?? 0;
+		const last = before?.live.get(m.j);
+		const n = m.n ?? last?.[4] ?? 0;
 		if (before && before !== s) {
 			this.end(m.j, t, out); // Review Focus 5: it left that map surface
 		}
 		const at = Math.max(t, s.floor);
-		const lm: LiveMover = [m.j, m.k, m.f, m.name, n, m.x, m.y, m.vx, m.vy, at];
+		// §22.2: a train's kinds and colour; a sample without them keeps its last sample's
+		const lm: LiveMover = [
+			m.j, m.k, m.f, m.name, n, m.x, m.y, m.vx, m.vy, at, m.o ?? last?.[10] ?? "", m.c ?? last?.[11] ?? "",
+		];
 		s.live.set(m.j, lm);
+		s.trail.push(lm);
 		this.where.set(m.j, s);
 		s.changed = true;
 		s.rows.push([this.id(s, lm), at, m.x, m.y, m.vx, m.vy]);
@@ -201,19 +219,22 @@ export class Movers {
 			return;
 		}
 		s.live.delete(j);
+		s.trail = s.trail.filter(x => x[0] !== j);
 		this.where.delete(j);
 		s.changed = true;
 		s.rows.push([this.id(s, lm), Math.max(t, s.floor)]);
 		(out(s.map, s.surface).gone ??= []).push(j);
 	}
 
-	/** The mover's row in this window's `movers`: [id, kind, force, name], and n for a train. */
+	/** The mover's row in this window's `movers`: [id, kind, force, name], and n, kinds and colour for a train. */
 	private id(s: Surf, lm: LiveMover): number {
 		let i = s.ids.get(lm[0]);
 		if (i === undefined) {
 			i = s.movers.length;
 			s.ids.set(lm[0], i);
-			s.movers.push(lm[1] === "t" ? [lm[0], lm[1], lm[2], lm[3], lm[4]] : [lm[0], lm[1], lm[2], lm[3]]);
+			s.movers.push(lm[1] === "t"
+				? [lm[0], lm[1], lm[2], lm[3], lm[4], lm[10], lm[11]]
+				: [lm[0], lm[1], lm[2], lm[3]]);
 		}
 		return i;
 	}
@@ -254,7 +275,7 @@ export class Movers {
 		if (!s) {
 			s = {
 				map, surface, live: new Map(), ids: new Map(), movers: [], rows: [], floor: 0, days: new Map(),
-				touched: new Set(), changed: false,
+				touched: new Set(), changed: false, trail: [],
 			};
 			this.surfs.set(key, s);
 		}
