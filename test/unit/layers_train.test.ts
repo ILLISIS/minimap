@@ -116,7 +116,7 @@ test("a fluid wagon is a capsule: the outer 4.9 x 2.4 tiles, semicircular ends, 
 	}
 });
 
-test("an artillery wagon: a disc the full height at the back, a barrel a third as thick; a mirrored", () => {
+test("an artillery wagon: a disc the full height at the back, a barrel 1.4 thick; a mirrored", () => {
 	for (const [k, dir] of [["A", 1], ["a", -1]] as const) {
 		const { ctx, calls } = fake();
 		train(ctx, view, shown([car(0, 0, k)]));
@@ -129,7 +129,8 @@ test("an artillery wagon: a disc the full height at the back, a barrel a third a
 		assert.ok(Math.abs(cx - (-dir * ((4.9 * K / 2) - (0.25 * K) - r))) < 1e-9, "the disc at the back end");
 		const bar = boxes(calls)[0].pts;
 		assert.equal(bar.length, 4, "the barrel is a rectangle");
-		assert.ok(Math.abs(extent(bar, 1) + (0.5 * K) - (2.4 * K / 3)) < 1e-9, "a third of the height outer");
+		assert.ok(Math.abs(extent(bar, 1) + (0.5 * K) - (1.4 * K)) < 1e-9, "1.4 tiles thick outer");
+		assert.ok(Math.abs(extent(bar, 1) - (0.5 * K) - (0.4 * K)) < 1e-9, "a 0.4-tile yellow core inside the outline");
 		const front = Math.max(...bar.map(p => dir * p[0])) * dir;
 		assert.ok(Math.abs(front - (dir * ((4.9 * K / 2) - (0.25 * K)))) < 1e-9, "to the front");
 	}

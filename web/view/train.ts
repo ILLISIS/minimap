@@ -22,6 +22,8 @@ const LENGTH = 4.9;
 const WIDTH = 2.4;
 const OUTLINE = 0.5;
 const BAR = 0.8;
+/** An artillery wagon's barrel, outer thickness (§22.6, from the screenshot). */
+const BARREL = 1.4;
 /** Where a locomotive's sides stop and slant to its point, from its back. */
 const SHOULDER = 2.5;
 
@@ -83,7 +85,7 @@ export function train(ctx: Pen, v: Viewer, m: Shown): void {
 			ctx.closePath();
 		} else if (kind === "A") {
 			// the barrel first, from the disc's centre to the front, so the disc covers its back end
-			const [cx, hb] = [-f * (hl - hw), Math.max(((w / 3) - o) / 2, 0)];
+			const [cx, hb] = [-f * (hl - hw), Math.max(((w * BARREL / WIDTH) - o) / 2, 0)];
 			ctx.moveTo(cx, -hb);
 			ctx.lineTo(f * hl, -hb);
 			ctx.lineTo(f * hl, hb);
