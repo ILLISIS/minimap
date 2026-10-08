@@ -264,11 +264,11 @@ test("a mover turning a corner, drawn 2 s behind live, stays within ε of its tr
 test("§22.5: a parked vehicle points the way h says, with its kinds and colour; a player keeps its heading", () => {
 	const tracks = new Tracks();
 	tracks.live(T, [
-		["1.5.v7", "v", "player", "car", 0, 3, 4, 0, 0, T, "C", "00ff00", 0.25],
+		["1.5.v7", "v", "player", "car", 0, 3, 4, 0, 0, T, "C", "00ff00", 0.5],
 		["p:bob", "p", "player", "bob", 0, 3, 4, 0, 0, T, "", "", 0.25],
 	]);
 	const [v, p] = tracks.at(T);
-	assert.ok(Math.abs(v.hx - 1) < 1e-9 && Math.abs(v.hy) < 1e-9, "east");
+	assert.ok(Math.abs(v.hx) < 1e-9 && Math.abs(v.hy - 1) < 1e-9, "south, not the east fallback");
 	assert.deepEqual([v.kinds, v.colour], ["C", "00ff00"]);
 	assert.deepEqual([p.hx, p.hy], [1, 0]);
 });
