@@ -16,7 +16,7 @@ function fake() {
 	];
 	for (const name of names) {
 		ctx[name] = (...a: unknown[]) => {
-			calls.push([name, ...a, ctx.fillStyle, ctx.strokeStyle, ctx.lineWidth]);
+			calls.push([name, ...a, ctx.fillStyle, ctx.strokeStyle, ctx.lineWidth, ctx.lineJoin]);
 		};
 	}
 	return { ctx: ctx as unknown as Pen, calls };
@@ -86,6 +86,7 @@ test("a spidertron: a white disc 4.4 tiles across, 8 petal legs at 10 and 35 deg
 	assert.equal(arc[3], 2.2 * K);
 	assert.equal(arc[6], "#ffffff");
 	const tips = new Set<string>();
+	const paths = new Set<string>();
 	let reach = 0;
 	for (let i = 0; i < calls.length; i++) {
 		const c = calls[i];
@@ -93,12 +94,15 @@ test("a spidertron: a white disc 4.4 tiles across, 8 petal legs at 10 and 35 deg
 			const [t1, t2, t3] = [calls[i + 1], calls[i + 2], calls[i + 3]];
 			assert.ok([t1, t2, t3].every(q => q[0] === "lineTo") && calls[i + 4][0] === "closePath");
 			const tip = t2 as unknown as [string, number, number];
-			const deg = Math.abs(Math.atan2(tip[2], Math.abs(tip[1]))) * 180 / Math.PI;
+			const deg = Math.atan2(tip[2], Math.abs(tip[1])) * 180 / Math.PI;
 			tips.add(`${Math.round(deg)} ${Math.sign(tip[1])}`);
+			paths.add(`${c[1]} ${c[2]}`);
 			reach = Math.max(reach, Math.hypot(tip[1], tip[2]));
 		}
 	}
-	assert.deepEqual([...tips].sort(), ["10 -1", "10 1", "35 -1", "35 1"]);
+	assert.equal(paths.size, 8, "8 leg paths");
+	assert.deepEqual([...tips].sort(),
+		["-10 -1", "-10 1", "-35 -1", "-35 1", "10 -1", "10 1", "35 -1", "35 1"], "+-10 and +-35 each side");
 	assert.ok(Math.abs(reach + (0.5 * K) - (5.7 * K)) < 1e-6, `outer reach ${(reach + (0.5 * K)) / K}`);
 	assert.equal(calls.some(c => c[0] === "rotate"), false, "it is not turned");
 });
@@ -109,6 +113,30 @@ test("a spidertron is outlined once around the whole shape: every stroke before 
 	const last = calls.map(c => c[0]).lastIndexOf("stroke");
 	assert.ok(last < calls.findIndex(c => c[0] === "fill"), "no stroke over a fill, so no ring over a leg root");
 	assert.ok(calls.filter(c => c[0] === "stroke").every(c => c[2] === "#00ff00" && c[3] === K));
+});
+
+test("the two legs 10 degrees off the horizontal on one side stay apart at their widest points", () => {
+	const { ctx, calls } = fake();
+	vehicle(ctx, at(1 / K), shown("S"));
+	const belly: [number, number][] = [];
+	for (let i = 0; i < calls.length; i++) {
+		// a leg: moveTo, lineTo belly+, lineTo tip, lineTo belly-
+		if (calls[i][0] === "moveTo" && (calls[i][1] as number) > 0 && Math.abs(calls[i][2] as number) < 0.5 * K) {
+			const [a, b] = [calls[i + 1], calls[i + 3]];
+			belly.push([((a[1] as number) + (b[1] as number)) / 2, ((a[2] as number) + (b[2] as number)) / 2]);
+			belly.push([Math.hypot((a[1] as number) - (b[1] as number), (a[2] as number) - (b[2] as number)), 0]);
+		}
+	}
+	assert.equal(belly.length, 8, "the two legs at +-10 on the right, stroked then filled");
+	belly.length = 4;
+	const gap = Math.hypot(belly[0][0] - belly[2][0], belly[0][1] - belly[2][1]);
+	assert.ok(gap >= (belly[1][0] + belly[3][0]) / 2, `centres ${gap / K} apart, kites ${belly[1][0] / K} wide`);
+});
+
+test("the spider's outline has round joins, so a leg's tip does not mitre out", () => {
+	const { ctx, calls } = fake();
+	vehicle(ctx, at(1 / K), shown("S"));
+	assert.ok(calls.filter(c => c[0] === "stroke").every(c => c[4] === "round"));
 });
 
 test("far out a vehicle stays 8 px across", () => {

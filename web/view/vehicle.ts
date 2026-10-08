@@ -11,8 +11,8 @@ const WIDTH = 4.65;
 const OUTLINE = 0.5;
 const DISC = 2.2;
 /** A leg: a four-point kite in its own frame, (DISC, 0), (BELLY, +-HALF), (TIP, 0); outer reach TIP + OUTLINE. */
-const BELLY = 3.5;
-const HALF = 0.7;
+const BELLY = 3.8;
+const HALF = 0.55;
 const TIP = 5.2;
 const REACH = TIP + OUTLINE;
 /** A leg's angle above or below the horizontal, four a side. */
