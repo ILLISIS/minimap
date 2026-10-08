@@ -147,7 +147,7 @@ t.case("movers: a train's samples carry its carriages' kinds and its leading loc
 	local K
 	local seen = {} -- tick → { speed, front_stock x, back_stock x }, as the poll at that tick read them
 	ctx.at(252, function()
-		-- east to west: L (blue, facing east) C F A l (green, facing west)
+		-- east to west: L (blue, facing east) C F A l (green, facing west); §22.6: upper case faces the leading end
 		K = mt.train(S, 25, 1200, "LCFAl")
 		for _, c in ipairs(K.carriages) do
 			if c.type == "locomotive" then
@@ -171,7 +171,7 @@ t.case("movers: a train's samples carry its carriages' kinds and its leading loc
 					lead, other = p[3], p[2]
 				end
 				local way = lead > other and "east" or "west"
-				local want = way == "east" and { "LCFAL", "0000ff" } or { "LAFCL", "00ff00" }
+				local want = way == "east" and { "LCFAl", "0000ff" } or { "Lafcl", "00ff00" }
 				ctx.expect(x.o == want[1] and x.c == want[2] and x.n == 5,
 					way .. " at " .. x.tick .. ": " .. tostring(x.o) .. ", " .. tostring(x.c))
 				ways[way] = ways[way] + 1

@@ -27,8 +27,12 @@ type Track = {
 	kind: "t" | "v" | "p"; force: string; name: string; evs: Ev[];
 };
 
-/** One carriage (§22.2): its centre, its angle along the path in radians, and whether it is a locomotive. */
-export type Car = { x: number; y: number; a: number; loco: boolean };
+/**
+ * One carriage (§22.2): its centre, its angle along the path in radians (toward the leading end), whether it is a
+ * locomotive, and its kind letter (§22.6: upper case when it faces the leading end, lower when it faces back; an old
+ * sample's are all upper case).
+ */
+export type Car = { x: number; y: number; a: number; loco: boolean; kind: string };
 
 /** What a frame draws for one mover. */
 export type Shown = {
@@ -254,7 +258,8 @@ function line(evs: Ev[], i: number, x: number, y: number, hx: number, hy: number
 
 /**
  * §22.2: n carriages along `path`, carriage i centred i × 7 tiles back from its first point (the leading carriage's
- * centre, which Lua samples, §6.3; plan F ruling P9) and turned along the path there; kinds[i] "L" is a locomotive.
+ * centre, which Lua samples, §6.3; plan F ruling P9) and turned along the path there; kinds[i] "L" or "l"
+ * is a locomotive.
  * A path shorter than the train places the carriages it has room for.
  */
 export function carriages(path: [number, number][], n: number, kinds: string): Car[] {
@@ -268,7 +273,8 @@ export function carriages(path: [number, number][], n: number, kinds: string): C
 		while (i < n && i * PITCH <= walked + len) {
 			const f = len === 0 ? 0 : ((i * PITCH) - walked) / len;
 			const [x, y] = [ax + (f * (bx - ax)), ay + (f * (by - ay))];
-			cars.push({ x, y, a: Math.atan2(ay - by, ax - bx), loco: kinds[i] === "L" });
+			const kind = kinds[i] ?? "C";
+			cars.push({ x, y, a: Math.atan2(ay - by, ax - bx), loco: kind === "L" || kind === "l", kind });
 			i += 1;
 		}
 		walked += len;

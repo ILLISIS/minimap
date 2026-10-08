@@ -38,14 +38,16 @@ local function hex(e)
 		math.floor(c.b * 255 + 0.5))
 end
 
---- §22.2: train tr's carriages' kinds from its front (at most core.KINDS_MAX), and the colours of its first locomotive
+--- §22.2: train tr's carriages' kinds from its front (at most core.KINDS_MAX; §22.6: upper case when the carriage faces
+--- the front, else lower), and the colours of its first locomotive
 --- from the front and from the back, into mover m. Read at m's first poll after core.take cleared m.o: at first sight,
 --- at each on_train_created and at an adoption (plan F ruling P7).
 local function shape(m, tr)
 	local kinds, first, last = {}, nil, nil
 	for i, c in ipairs(tr.carriages) do
 		if i <= core.KINDS_MAX then
-			kinds[i] = KINDS[c.type] or "C"
+			local k = KINDS[c.type] or "C"
+			kinds[i] = c.is_headed_to_trains_front and k or k:lower()
 		end
 		if c.type == "locomotive" then
 			first, last = first or c, c
@@ -135,7 +137,7 @@ local function poll(st, j, t, how)
 	local src = e or r
 	local o, c = m.o, m.cf
 	if not fwd then
-		o, c = o:reverse(), m.cb
+		o, c = core.flip_kinds(o), m.cb
 	end
 	if m.kind == "t" then
 		-- §22.2: its leading end's heading, for a train drawn at rest; carriages run front to back

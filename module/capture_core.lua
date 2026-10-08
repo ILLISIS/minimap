@@ -134,6 +134,14 @@ function core.heading(x, y, sx, sy, orientation, back)
 	return round3(orientation + (back and 0.5 or 0))
 end
 
+--- §22.6: a train's kinds read from its other end: the order reversed, each carriage's case swapped (it now faces the
+--- other way relative to the leading end).
+function core.flip_kinds(o)
+	return (o:reverse():gsub("%a", function(ch)
+		return ch:lower() == ch and ch:upper() or ch:lower()
+	end))
+end
+
 --- One poll of mover m at (x, y) on surface index si (§6.3, K6). Returns true when a sample is due; m.x, m.y, m.vx, m.vy,
 --- m.t and m.si then hold it. The velocity is the finite difference since the last poll, in tiles a second, and 0 across
 --- a surface change. A first poll only records, so a first sample carries a measured velocity (plan ruling 7). how:

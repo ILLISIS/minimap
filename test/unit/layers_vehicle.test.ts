@@ -46,7 +46,7 @@ function outer(p: [number, number][], o: number): [number, number] {
 	return [extent(q, 0), extent(q, 1)];
 }
 
-test("a car: a triangle 4.65 x 4.78 tiles outer, #e5e5e5, outlined 0.5 tile in its colour", () => {
+test("a car: a triangle 4.65 x 4.78 tiles outer, #e5e5e5, outlined 0.5 tile in #ff1a1a whatever its colour", () => {
 	const { ctx, calls } = fake();
 	vehicle(ctx, at(1 / K), shown("C"));
 	const p = pts(calls);
@@ -55,7 +55,7 @@ test("a car: a triangle 4.65 x 4.78 tiles outer, #e5e5e5, outlined 0.5 tile in i
 	assert.ok(Math.abs(w - (4.65 * K)) < 1e-6 && Math.abs(l - (4.78 * K)) < 1e-6, `${w / K} x ${l / K}`);
 	assert.ok(calls.some(c => c[0] === "fill" && c[1] === "#e5e5e5"));
 	const s = calls.find(c => c[0] === "stroke") as Call;
-	assert.equal(s[2], "#00ff00");
+	assert.equal(s[2], "#ff1a1a");
 	assert.equal(s[3], 0.5 * K);
 });
 
@@ -71,12 +71,6 @@ test("a car's point goes along its heading: east turns the north-pointing triang
 	assert.equal(calls.find(c => c[0] === "rotate")?.[1], Math.PI / 2);
 	const p = pts(calls);
 	assert.ok(p[0][1] < p[1][1], "its first point, the tip, is the most forward in local y");
-});
-
-test("no colour: base's locomotive red", () => {
-	const { ctx, calls } = fake();
-	vehicle(ctx, at(1 / K), shown("C", { colour: "" }));
-	assert.equal((calls.find(c => c[0] === "stroke") as Call)[2], "#eb1200");
 });
 
 test("a spidertron: a white disc 4.4 tiles across, 8 petal legs at 10 and 35 degrees, reach 5.7", () => {
@@ -112,7 +106,7 @@ test("a spidertron is outlined once around the whole shape: every stroke before 
 	vehicle(ctx, at(1 / K), shown("S"));
 	const last = calls.map(c => c[0]).lastIndexOf("stroke");
 	assert.ok(last < calls.findIndex(c => c[0] === "fill"), "no stroke over a fill, so no ring over a leg root");
-	assert.ok(calls.filter(c => c[0] === "stroke").every(c => c[2] === "#00ff00" && c[3] === K));
+	assert.ok(calls.filter(c => c[0] === "stroke").every(c => c[2] === "#ff1a1a" && c[3] === K));
 });
 
 test("the two legs 10 degrees off the horizontal on one side stay apart at their widest points", () => {

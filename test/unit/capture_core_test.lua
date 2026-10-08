@@ -25,6 +25,12 @@ local function regs(st)
 	return n
 end
 
+t.test("flip_kinds (§22.6): a train read from its other end: the order reversed, each carriage's case swapped", function()
+	t.expect_eq(core.flip_kinds("LCf"), "Fcl")
+	t.expect_eq(core.flip_kinds("LCCl"), "Lccl")
+	t.expect_eq(core.flip_kinds(""), "")
+end)
+
 t.test("bounds and the clip (§6.1, K3, K32): [x1, x2) per axis in chunks, only on the tile's surface", function()
 	local tile = { world = "w", x = 0, y = 0, size = 64, surface = "nauvis" }
 	t.expect_same(core.bounds(tile), { x1 = -1, y1 = -1, x2 = 1, y2 = 1 })

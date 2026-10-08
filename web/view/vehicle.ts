@@ -1,6 +1,6 @@
 // §22.5: a car, tank or spidertron as the in-game map draws it, on a canvas 2D context in CSS pixels (DOM-free, so node
 // tests run it against a recording context).
-import { LOCO, type Pen } from "./train.js";
+import { OUTLINE_COLOUR, type Pen } from "./train.js";
 import type { Shown } from "./movers.js";
 import type { Viewer } from "./viewer.js";
 
@@ -22,15 +22,15 @@ const MIN = 8;
 
 /**
  * §22.5: kinds "S" a spidertron (a white disc with 8 pointed legs, not turned), anything else a car's triangle
- * (#e5e5e5, its point along the heading); outlined in the vehicle's colour, else base's locomotive red. Never under
- * 8 px across.
+ * (#e5e5e5, its point along the heading); outlined in the chart's #ff1a1a (§22.6), not the vehicle's colour. Never
+ * under 8 px across.
  */
 export function vehicle(ctx: Pen, v: Viewer, m: Shown): void {
 	const k = 1 / v.view.s;
 	const o = Math.max(OUTLINE * k, 1);
 	ctx.save();
 	ctx.translate(((m.x - v.view.x) * k) + (v.width / 2), ((m.y - v.view.y) * k) + (v.height / 2));
-	ctx.strokeStyle = m.colour === "" ? LOCO : `#${m.colour}`;
+	ctx.strokeStyle = OUTLINE_COLOUR;
 	ctx.lineWidth = o;
 	ctx.lineJoin = "miter";
 	let draw: () => void = () => undefined;
