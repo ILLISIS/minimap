@@ -95,7 +95,7 @@ local function poll(st, j, t, how)
 		movers.gone(st, j)
 		return false
 	end
-	local e, pos, si
+	local e, pos, si, h
 	local fwd = true -- a train runs towards its front (K30); its kinds and colour are then from the front
 	if m.kind == "t" then
 		fwd = core.forward(m.fwd, r.speed)
@@ -120,6 +120,11 @@ local function poll(st, j, t, how)
 		end
 	elseif m.kind == "v" then
 		e, pos, si = r, r.position, r.surface_index
+		-- §22.5: a spidertron is "S", any other vehicle "C", with its colour if it has one; its orientation each time
+		if not m.o then
+			m.o, m.cf = r.type == "spider-vehicle" and "S" or "C", r.color and hex(r)
+		end
+		h = core.heading(pos.x, pos.y, nil, nil, r.orientation, false)
 	else
 		pos, si = r.physical_position, r.physical_surface_index
 	end
@@ -128,7 +133,7 @@ local function poll(st, j, t, how)
 	end
 	m.s = game.get_surface(si).name
 	local src = e or r
-	local o, c, h = m.o, m.cf, nil
+	local o, c = m.o, m.cf
 	if not fwd then
 		o, c = o:reverse(), m.cb
 	end

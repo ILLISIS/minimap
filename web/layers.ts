@@ -3,6 +3,7 @@
 // page only through fillText and strokeText (REV M-13).
 import { SIZE, type Quad } from "../shared/keys.js";
 import { train } from "./view/train.js";
+import { vehicle } from "./view/vehicle.js";
 import { iconIndex, type Icon, type IconMetadata } from "./view/overlays.js";
 import type { Entry, Viewer } from "./view/viewer.js";
 
@@ -13,7 +14,7 @@ export type Icons = { sheet: CanvasImageSource; at: Map<string, Icon> };
 const TAGS = 2;
 const RECIPES = 3 / 8;
 const NAMES = 1;
-const COLOURS = { v: "#50c8ff", p: "#ffffff" };
+const COLOURS = { p: "#ffffff" };
 
 /** The export's spritesheet and metadata.json; undefined without them, and text is drawn instead (§11.7). */
 export async function loadIcons(png: string, json: string): Promise<Icons | undefined> {
@@ -143,24 +144,31 @@ function mark(
 	}
 }
 
-/** §22.2: trains as their carriages; §11.7: vehicles and players as dots with a heading, named when zoomed in. */
+/**
+ * §22.2: trains as their carriages; §22.5: vehicles as a triangle or a spider; §11.7: players as dots with a heading;
+ * the last two named when zoomed in.
+ */
 function movers(ctx: CanvasRenderingContext2D, v: Viewer): void {
 	for (const m of v.movers) {
 		if (m.kind === "t") {
 			train(ctx, v, m);
 			continue;
 		}
-		ctx.strokeStyle = COLOURS[m.kind];
-		ctx.fillStyle = COLOURS[m.kind];
 		const [sx, sy] = screen(v, m.x, m.y);
-		ctx.lineWidth = 2;
-		ctx.beginPath();
-		ctx.arc(sx, sy, 4, 0, 2 * Math.PI);
-		ctx.fill();
-		ctx.beginPath();
-		ctx.moveTo(sx, sy);
-		ctx.lineTo(sx + (9 * m.hx), sy + (9 * m.hy));
-		ctx.stroke();
+		if (m.kind === "v") {
+			vehicle(ctx, v, m);
+		} else {
+			ctx.strokeStyle = COLOURS.p;
+			ctx.fillStyle = COLOURS.p;
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.arc(sx, sy, 4, 0, 2 * Math.PI);
+			ctx.fill();
+			ctx.beginPath();
+			ctx.moveTo(sx, sy);
+			ctx.lineTo(sx + (9 * m.hx), sy + (9 * m.hy));
+			ctx.stroke();
+		}
 		if (v.view.s <= NAMES) {
 			ctx.strokeStyle = "#000";
 			ctx.lineWidth = 3;

@@ -49,6 +49,8 @@ export type Shown = {
 	cars: Car[];
 	/** A train's leading locomotive's colour, "rrggbb"; "" when Lua sent none. */
 	colour: string;
+	/** A vehicle's kind (§22.5), "S" a spidertron, else "C"; a train's carriages' kinds (§22.2). */
+	kinds: string;
 };
 
 /**
@@ -165,11 +167,11 @@ export class Tracks {
 		}
 		// A gone ahead is an event to draw: frames go on until it is (ruling P10; a parked mover has no other reason).
 		moving ||= next !== undefined && next.gone;
-		const [hx, hy] = heading(tr.evs, i, tr.kind === "t");
+		const [hx, hy] = heading(tr.evs, i, tr.kind);
 		const path = tr.kind === "t" ? line(tr.evs, i, x, y, hx, hy, e.n * PITCH) : [];
 		return {
 			id, kind: tr.kind, force: tr.force, name: tr.name, x, y, hx, hy, moving, path,
-			cars: carriages(path, tr.kind === "t" ? e.n : 0, e.kinds), colour: e.colour,
+			cars: carriages(path, tr.kind === "t" ? e.n : 0, e.kinds), colour: e.colour, kinds: e.kinds,
 		};
 	}
 
@@ -212,10 +214,10 @@ export class Tracks {
  * The direction of travel: the velocity, else (a train at rest) the heading Lua sent, else the step from the sample
  * before, else east.
  */
-function heading(evs: Ev[], i: number, train: boolean): [number, number] {
+function heading(evs: Ev[], i: number, kind: Track["kind"]): [number, number] {
 	const e = evs[i];
 	const prev = evs[i - 1];
-	if (train && e.vx === 0 && e.vy === 0) {
+	if (kind !== "p" && e.vx === 0 && e.vy === 0) {
 		const a = e.h * 2 * Math.PI;
 		return [Math.sin(a), -Math.cos(a)];
 	}

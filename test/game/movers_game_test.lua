@@ -218,6 +218,34 @@ t.case("movers: at most 8 polls a tick, and the vehicles are cars and spidertron
 		end)
 	end)
 
+t.case("movers: a car's and a spidertron's samples carry o, c and h (§22.5)", function(ctx)
+	local car, spider
+	ctx.at(252, function()
+		car = assert(S.create_entity{ name = "car", position = { 100, 170 }, force = "player" })
+		car.orientation = 0.25
+		car.color = { r = 0, g = 0, b = 1 } -- the spidertron keeps base's orange
+		spider = assert(S.create_entity{ name = "spidertron", position = { 100, 190 }, force = "player" })
+		spider.autopilot_destination = { 300, 190 }
+	end)
+	each(ctx, 253, 420, function()
+		car.speed = 0.1
+	end)
+	ctx.at(421, function()
+		for want, v in pairs({ C = car, S = spider }) do
+			local j = storage.minimap.by_unit[v.unit_number]
+			local got = false
+			for _, x in ipairs(mt.samples(j or "", 252, game.tick)) do
+				if not x.gone then
+					got = true
+					ctx.expect(x.o == want and x.h ~= nil, want .. ": o = " .. tostring(x.o) .. ", h = " .. tostring(x.h))
+					ctx.expect(x.c == (want == "C" and "0000ff" or "ff8000"), want .. ": c = " .. tostring(x.c))
+				end
+			end
+			ctx.expect(got, want .. " sent samples")
+		end
+	end)
+end)
+
 t.case("movers: a player without a character is walked as p:<name> (C9)", function(ctx)
 	local real, fake, at = movers.players, nil, nil
 	ctx.at(252, function()

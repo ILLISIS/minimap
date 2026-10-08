@@ -8,11 +8,12 @@ export type Pen = {
 	fillStyle: string | object; strokeStyle: string | object; lineWidth: number; lineJoin: string;
 	save(): void; restore(): void; translate(x: number, y: number): void; rotate(a: number): void;
 	beginPath(): void; moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; closePath(): void;
+	arc(x: number, y: number, r: number, a0: number, a1: number): void;
 	fill(): void; stroke(): void;
 };
 
 /** A locomotive Lua sent no colour for: base's (data/base/prototypes/entity/trains.lua:607). */
-const LOCO = "#eb1200";
+export const LOCO = "#eb1200";
 const FILL = "#f9ce3e";
 // Measured from the owner's screenshot of the in-game map (§22.4), in tiles.
 const LENGTH = 4.9;
