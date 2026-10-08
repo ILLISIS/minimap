@@ -193,21 +193,29 @@ end
 --- §6.10 step 5: poll up to core.WALK movers; with the walk done and core.SCAN ticks passed, scan instead.
 function movers.step(st, t)
 	local slot = t % core.WHEEL
+	local reads = 0
+	-- plan H: first the trains a busier tick left over, oldest first; each waits in carry once, not moved every tick
+	while reads < core.FAST do
+		local j = core.pop(st.carry)
+		if j == nil then
+			break
+		end
+		if st.fast[j] and st.fast[j] <= t then -- else read since, stopped or gone
+			reads = reads + 1
+			poll(st, j, t)
+		end
+	end
 	local list = st.wheel[slot]
 	if list then
 		st.wheel[slot] = nil
-		local reads = 0
 		for _, j in ipairs(list) do
 			if st.fast[j] == t then -- else stale: j was read since, or has stopped or gone
 				if reads < core.FAST then
 					reads = reads + 1
 					poll(st, j, t)
 				else
-					-- ponytail: later trains wait a tick; spread by speed if a crowd of fast trains ever shows
-					st.fast[j] = t + 1
-					local nxt = st.wheel[(t + 1) % core.WHEEL] or {}
-					st.wheel[(t + 1) % core.WHEEL] = nxt
-					nxt[#nxt + 1] = j
+					-- ponytail: over core.FAST a tick, trains queue in carry and each is read later than its 4 tiles
+					core.push(st.carry, j)
 				end
 			end
 		end

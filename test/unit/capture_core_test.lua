@@ -240,22 +240,23 @@ t.test("the cut (K34): a part that fills a line exactly to 3,499 bytes is kept; 
 		t.expect_eq(parts_of(lines, 4294967295), "a,b")
 	end)
 
-t.test("migrations (§6.8): a new table becomes schema 2; schema 2 is left as it is; a newer schema is refused", function()
+t.test("migrations (§6.8): a new table becomes schema 3; schema 3 is left as it is; a newer schema is refused", function()
 	local s = core.migrate({})
-	t.expect_eq(s.schema, 2)
+	t.expect_eq(s.schema, 3)
 	t.expect_true(s.configured == false and s.seeded == false and s.drops == 0 and s.wi == 1 and s.next_scan == 0,
 		"flags and counters")
 	t.expect_same(s.queue, { head = 1, tail = 0 })
 	t.expect_same(s.machines, { head = 1, tail = 0 })
+	t.expect_same(s.carry, { head = 1, tail = 0 })
 	for _, k in ipairs({ "forces", "pending", "movers", "by_train", "by_unit", "walk", "reg", "wheel", "fast" }) do
 		t.expect_same(s[k], {}, k)
 	end
 	s.marker = "kept"
 	core.push(s.queue, "item")
 	core.migrate(s)
-	t.expect_true(s.marker == "kept" and core.size(s.queue) == 1, "schema 2 is never wiped")
-	local newer = { schema = 3, marker = "untouched" }
-	t.expect_error(function() core.migrate(newer) end, "schema 3 is newer")
+	t.expect_true(s.marker == "kept" and core.size(s.queue) == 1, "schema 3 is never wiped")
+	local newer = { schema = 4, marker = "untouched" }
+	t.expect_error(function() core.migrate(newer) end, "schema 4 is newer")
 	t.expect_eq(newer.marker, "untouched")
 end)
 
@@ -327,9 +328,10 @@ end)
 t.test("migration 2 (plan G): a schema-1 table gains the wheel and fast, and keeps the rest", function()
 	local s = { schema = 1, marker = "kept", movers = { a = 1 } }
 	core.migrate(s)
-	t.expect_same({ s.schema, s.marker, s.movers.a }, { 2, "kept", 1 })
+	t.expect_same({ s.schema, s.marker, s.movers.a }, { 3, "kept", 1 })
 	t.expect_same(s.wheel, {})
 	t.expect_same(s.fast, {})
+	t.expect_same(s.carry, { head = 1, tail = 0 }, "migration 3 (plan H): the carry queue")
 end)
 
 t.test("plan G: next_read is the ticks a train takes to move core.STEP tiles, between 1 and core.SLOW", function()

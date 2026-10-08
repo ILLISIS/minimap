@@ -282,6 +282,10 @@ core.MIGRATIONS = {
 	function(s)
 		s.wheel, s.fast = {}, {}
 	end,
+	--- 3: plan H: carry, the trains over a tick's core.FAST, oldest first.
+	function(s)
+		s.carry = core.queue()
+	end,
 }
 
 --- Run the migrations above s.schema, in order (SP0 §7.4; universal_edges/module/runtime/migrations_core.lua:6-16).
