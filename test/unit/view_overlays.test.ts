@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Tag } from "../../contracts.js";
-import { Versions, iconIndex } from "../../web/view/overlays.js";
+import { Versions, iconIndex, recipeIcon } from "../../web/view/overlays.js";
 
 const tag = (start: number, end: number | null, text: string, force = "player"): Tag => [
 	7, 3, force, start, end, 10, 20, "item/iron-plate", text,
@@ -30,4 +30,17 @@ test("sprites by tag icon and recipe name; the export's virtual-signal is the si
 		"recipe": [{ name: "iron-gear-wheel", icon: { x: 32, y: 0, size: 32 } }],
 	});
 	assert.deepEqual([...at.keys()], ["item/iron-plate", "virtual/signal-A", "recipe/iron-gear-wheel"]);
+});
+
+test("a recipe's sprite: its own, else its same-named item's or fluid's, as the game draws it; none, no sprite", () => {
+	const at = iconIndex({
+		item: [{ name: "iron-gear-wheel", icon: { x: 0, y: 0, size: 32 } }],
+		fluid: [{ name: "petroleum-gas", icon: { x: 32, y: 0, size: 32 } }],
+		recipe: [{ name: "advanced-oil-processing", icon: { x: 64, y: 0, size: 32 } }, { name: "iron-gear-wheel" }],
+	});
+	assert.equal(recipeIcon(at, "advanced-oil-processing"), "recipe/advanced-oil-processing");
+	assert.equal(recipeIcon(at, "iron-gear-wheel"), "item/iron-gear-wheel");
+	assert.equal(recipeIcon(at, "petroleum-gas"), "fluid/petroleum-gas");
+	assert.equal(recipeIcon(at, "a-mod-recipe"), undefined);
+	assert.equal(recipeIcon(undefined, "iron-gear-wheel"), undefined, "no export");
 });

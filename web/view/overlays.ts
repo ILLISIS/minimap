@@ -38,6 +38,17 @@ export type Icon = { x: number; y: number; size: number };
 export type IconMetadata = Record<string, { name: string; icon?: Icon }[]>;
 
 /**
+ * A recipe's sprite key: its own icon, else its same-named item's or fluid's, as the game draws a recipe without one;
+ * undefined when none (or no export), and then nothing is drawn (owner, 2026-10-08: the icon, not the name).
+ * ponytail: same name, not the recipe's main product; read the export's prototypes.json if a mod's recipes are
+ * missed.
+ */
+export function recipeIcon(at: Map<string, Icon> | undefined, recipe: string): string | undefined {
+	const keys = ["recipe", "item", "fluid"].map(type => `${type}/${recipe}`);
+	return keys.find(key => at?.has(key));
+}
+
+/**
  * Sprites by the names tags and recipes use: a tag's `"<signal type>/<name>"` (Plan A's contract; the export calls
  * the `virtual` signal type `virtual-signal`) and `recipe/<name>`.
  */

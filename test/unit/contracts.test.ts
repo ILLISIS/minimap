@@ -44,7 +44,8 @@ test("LuaMsg refuses a fractional chunk, an unknown kind, a tag without its numb
 	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...train, c: "red" }] }), false, "a colour not rrggbb");
 	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...train, o: "LX" }] }), false, "a kind not L, C, F or A");
 	// what Lua sends since §22.5 and §22.6: lower case for a carriage facing back, S and C for vehicles
-	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...train, o: "LLCCfal" }] }), true, "a train facing both ways");
+	const both = { type: "mm.move", s: "nauvis", m: [{ ...train, o: "LLCCfal" }] };
+	assert.equal(ok(both), true, "a train facing both ways");
 	const car = { j: "b", k: "v", f: "p", name: "spidertron", x: 0, y: 0, vx: 0, vy: 0, h: 0.5 };
 	assert.equal(ok({ type: "mm.move", s: "nauvis", m: [{ ...car, o: "S" }, { ...car, o: "C" }] }), true, "vehicles");
 	assert.equal(valid(LuaBatch)({ tick: 5, msgs: [{ type: "mm.adopt", j: "a", trace: "b" }] }), true);

@@ -4,13 +4,13 @@
 import { SIZE, type Quad } from "../shared/keys.js";
 import { train } from "./view/train.js";
 import { vehicle } from "./view/vehicle.js";
-import { iconIndex, type Icon, type IconMetadata } from "./view/overlays.js";
+import { iconIndex, recipeIcon, type Icon, type IconMetadata } from "./view/overlays.js";
 import type { Entry, Viewer } from "./view/viewer.js";
 
 /** The mod pack export's spritesheet, and its sprites by tag icon ("item/iron-plate") and "recipe/<name>". */
 export type Icons = { sheet: CanvasImageSource; at: Map<string, Icon> };
 
-/** Tags show from level 0's scales down; recipes once a machine (3 tiles) is 8 px; names at 1 tile a pixel. */
+/** Tags show from level 0's scales down; recipes once a machine (3 tiles) is 8 px; player names at 1 tile a pixel. */
 const TAGS = 2;
 const RECIPES = 3 / 8;
 const NAMES = 1;
@@ -91,7 +91,10 @@ export function draw(ctx: CanvasRenderingContext2D, v: Viewer, icons: Icons | un
 	}
 	if (v.view.s <= RECIPES) {
 		for (const [, , , , , x, y, recipe] of v.recipes.at(t)) {
-			mark(ctx, v, icons, x, y, Math.min(32, 3 / v.view.s), `recipe/${recipe}`, "");
+			const icon = recipeIcon(icons?.at, recipe);
+			if (icon) {
+				mark(ctx, v, icons, x, y, Math.min(32, 3 / v.view.s), icon, "");
+			}
 		}
 	}
 	movers(ctx, v);
@@ -146,7 +149,7 @@ function mark(
 
 /**
  * §22.2: trains as their carriages; §22.5: vehicles as a triangle or a spider; §11.7: players as dots with a heading;
- * the last two named when zoomed in.
+ * players named when zoomed in.
  */
 function movers(ctx: CanvasRenderingContext2D, v: Viewer): void {
 	for (const m of v.movers) {
@@ -168,11 +171,12 @@ function movers(ctx: CanvasRenderingContext2D, v: Viewer): void {
 			ctx.moveTo(sx, sy);
 			ctx.lineTo(sx + (9 * m.hx), sy + (9 * m.hy));
 			ctx.stroke();
-		}
-		if (v.view.s <= NAMES) {
-			ctx.strokeStyle = "#000";
-			ctx.lineWidth = 3;
-			label(ctx, m.name, sx + 8, sy);
+			// players are named when zoomed in; vehicles aren't (owner, 2026-10-08)
+			if (v.view.s <= NAMES) {
+				ctx.strokeStyle = "#000";
+				ctx.lineWidth = 3;
+				label(ctx, m.name, sx + 8, sy);
+			}
 		}
 	}
 }
