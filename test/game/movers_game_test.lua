@@ -13,7 +13,7 @@ end
 
 -- Minimap plan A Task 4 (spec §16.3 Movers and Crossing). Lab surface mm-m: rails on rows y = 1, 9, 17 and 25 from x 1
 -- to 2001, cars at x 100 on rows y 40–157, a fake player on y 60; mm-d for the deleted surface. Ticks 250–1850. With UE:
--- the loopback crossing on nauvis x 19990–20030 and the scripted rejection on sp3b row 50000, ticks 1000–2901.
+-- the loopback crossing on nauvis x 35990–36030 and the scripted rejection on sp3b row 50000, ticks 1000–2901.
 
 local function by_train(tr)
 	return storage.minimap.by_train[tr.id]
@@ -422,12 +422,13 @@ t.case("crossing (UE): the destination takes the source's journey once, under th
 		end)
 		return
 	end
-	-- spike 11's crossing (spikes/11-minimap-probes/crossing_game_test.lua:75-95), 11,000 tiles east and 1,000 ticks
-	-- later; lanes_game_test.lua's empty ue.edge.sync at tick 95 gives synced_boot, as the circuit tests rely on
+	-- spike 11's crossing (spikes/11-minimap-probes/crossing_game_test.lua:75-95), 27,000 tiles east (x 20000 is UE's
+	-- radar row rd-61, whose clears cut the train) and 1,000 ticks later; lanes_game_test.lua's empty ue.edge.sync at
+	-- tick 95 gives synced_boot, as the circuit tests rely on
 	ctx.at(1000, function()
-		loop.ground(19990, 2960, 20030, 3330)
-		loop.ground(19990, 1690, 20030, 2120)
-		loop.edge("mm-t", 16, { CONNECTOR }, { 20000, 3000, 0 }, { 20016, 2000, 8 })
+		loop.ground(35990, 2960, 36030, 3330)
+		loop.ground(35990, 1690, 36030, 2120)
+		loop.edge("mm-t", 16, { CONNECTOR }, { 36000, 3000, 0 }, { 36016, 2000, 8 })
 	end)
 	ctx.at(1001, function()
 		seams.track("mm-t-x", "t1", 150)
