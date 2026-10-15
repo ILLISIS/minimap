@@ -1,10 +1,13 @@
 {
-	"extends": "../../../tsconfig.node.json",
-	"references": [
-		{ "path": "../../../packages/lib/tsconfig.node.json" },
-		{ "path": "../../../packages/host/tsconfig.node.json" },
-		{ "path": "../../../packages/controller/tsconfig.node.json" }
-	],
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2023"],
+		"module": "nodenext",
+		"moduleResolution": "node16",
+		"target": "es2022",
+		"forceConsistentCasingInFileNames": true,
+		"outDir": "dist/node"
+	},
 	"include": [
 		"./*.ts", "./shared/**/*.ts", "./store/**/*.ts", "./s3/**/*.ts", "./web/view/**/*.ts", "./test/unit/**/*.ts"
 	],
