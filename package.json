@@ -2,6 +2,8 @@
 	"name": "minimap",
 	"version": "2.0.0",
 	"description": "Minimap v2: one map of the cluster from the game's own chart, live and through time",
+	"license": "BlueOak-1.0.0",
+	"repository": { "type": "git", "url": "https://github.com/ILLISIS/minimap" },
 	"private": true,
 	"type": "module",
 	"main": "dist/node/index.js",
