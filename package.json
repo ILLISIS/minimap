@@ -5,7 +5,7 @@
 	"private": true,
 	"type": "module",
 	"main": "dist/node/index.js",
-	"scripts": { "prepare": "tsc --build && webpack-cli --mode production", "test": "node --test \"dist/node/test/unit/**/*.test.js\" && lua5.2 test/unit/run.lua .. test/unit/*_test.lua" },
+	"scripts": { "lint": "eslint --max-warnings 0 .", "prepare": "tsc --build && webpack-cli --mode production", "test": "node --test \"dist/node/test/unit/**/*.test.js\" && lua5.2 test/unit/run.lua .. test/unit/*_test.lua" },
 	"engines": { "node": ">=22" },
 	"peerDependencies": {
 		"@clusterio/controller": "workspace:^",
