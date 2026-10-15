@@ -5,6 +5,7 @@
 	"private": true,
 	"type": "module",
 	"main": "dist/node/index.js",
+	"scripts": { "prepare": "tsc --build && webpack-cli --mode production" },
 	"engines": { "node": ">=22" },
 	"peerDependencies": {
 		"@clusterio/controller": "workspace:^",
