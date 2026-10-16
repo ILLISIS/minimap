@@ -4,7 +4,7 @@ One map of a Clusterio cluster, drawn from the game's own chart, live and throug
 
 ## Requirements
 
-- Clusterio built from source, master at commit `4c0c89c` or later. 2.0.0-alpha.27, the latest release, lacks APIs this uses, and before `4c0c89c` the plugins' web pages don't load.
+- Clusterio 2.0, built from source: a checkout of tag `v2.0.2` or later in the 2.0 series. The plugin builds inside Clusterio's pnpm workspace. 2.0.0-alpha.27 and older lack APIs this uses, and Clusterio 2.1 may change the plugin API.
 - Node 22 or later, and pnpm at the version in Clusterio's `packageManager`.
 - `lua5.2` and `luacheck` (tests and lint).
 
@@ -19,7 +19,7 @@ pnpm build
 pnpm run -r --if-present prepare
 ```
 
-`prepare` compiles the plugin and bundles its web page. Add the plugin to the controller's plugin list with `npx clusteriocontroller plugin add <path to external_plugins/minimap>` and to each host's with `npx clusteriohost plugin add <that path>`.
+`prepare` compiles the plugin and bundles its web page. Add the plugin to the controller's plugin list with `npx clusteriocontroller plugin add ./external_plugins/minimap` and to each host's with `npx clusteriohost plugin add ./external_plugins/minimap`, from the checkout (a path needs the `./`).
 
 ## Test and lint
 
